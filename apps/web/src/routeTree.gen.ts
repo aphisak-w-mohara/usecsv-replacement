@@ -9,27 +9,51 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as AuthedAdminImportersIdUploadRouteImport } from "./routes/_authed/admin/importers.$id.upload";
 
-export interface FileRoutesByFullPath {}
-export interface FileRoutesByTo {}
+const AuthedAdminImportersIdUploadRoute = AuthedAdminImportersIdUploadRouteImport.update({
+  id: "/_authed/admin/importers/$id/upload",
+  path: "/admin/importers/$id/upload",
+  getParentRoute: () => rootRouteImport,
+} as any);
+
+export interface FileRoutesByFullPath {
+  "/admin/importers/$id/upload": typeof AuthedAdminImportersIdUploadRoute;
+}
+export interface FileRoutesByTo {
+  "/admin/importers/$id/upload": typeof AuthedAdminImportersIdUploadRoute;
+}
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
+  "/_authed/admin/importers/$id/upload": typeof AuthedAdminImportersIdUploadRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: never;
+  fullPaths: "/admin/importers/$id/upload";
   fileRoutesByTo: FileRoutesByTo;
-  to: never;
-  id: "__root__";
+  to: "/admin/importers/$id/upload";
+  id: "__root__" | "/_authed/admin/importers/$id/upload";
   fileRoutesById: FileRoutesById;
 }
-export interface RootRouteChildren {}
-
-declare module "@tanstack/react-router" {
-  interface FileRoutesByPath {}
+export interface RootRouteChildren {
+  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute;
 }
 
-const rootRouteChildren: RootRouteChildren = {};
+declare module "@tanstack/react-router" {
+  interface FileRoutesByPath {
+    "/_authed/admin/importers/$id/upload": {
+      id: "/_authed/admin/importers/$id/upload";
+      path: "/admin/importers/$id/upload";
+      fullPath: "/admin/importers/$id/upload";
+      preLoaderRoute: typeof AuthedAdminImportersIdUploadRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+  }
+}
+
+const rootRouteChildren: RootRouteChildren = {
+  AuthedAdminImportersIdUploadRoute: AuthedAdminImportersIdUploadRoute,
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>();
