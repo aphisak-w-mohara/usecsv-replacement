@@ -104,4 +104,43 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
     const body = await res.json();
     expect(body.error).toMatch(/too large/i);
   });
+
+  it("rejects oversized metadata_payload (>4KB) with 400", async () => {
+    const giant = { padding: "x".repeat(5000) };
+    const res = await SELF.fetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, metadata_payload: giant }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/too large/i);
+  });
+
+  it("accepts user_payload of exactly 4096 bytes (boundary)", async () => {
+    // JSON.stringify of {"padding": "<3987 x's>"} is ~4000 bytes; we need to land
+    // exactly at 4096. Start with the padding key and add x's until at-or-just-under.
+    const overhead = JSON.stringify({ padding: "" }).length; // 14
+    const exactly4096 = { padding: "x".repeat(4096 - overhead) };
+    // Sanity check (will throw in test if off-by-one):
+    const size = new TextEncoder().encode(JSON.stringify(exactly4096)).byteLength;
+    expect(size).toBe(4096);
+
+    const res = await SELF.fetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, user_payload: exactly4096 }),
+    });
+    // Guard is strict `>`, so exactly 4096 should still PASS
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects total_rows = 0 (zod schema enforcement)", async () => {
+    const res = await SELF.fetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, total_rows: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
