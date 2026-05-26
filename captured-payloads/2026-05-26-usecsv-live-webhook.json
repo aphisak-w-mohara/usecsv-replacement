@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-26T12:06:03Z",
+    "source": "live usecsv.com webhook dispatch via webhook.site",
+    "importer": "My First ImporterTenants (EVO)",
+    "importer_key": "82b18e5e-6412-4102-901a-ce3c05d71460",
+    "input_csv_headers": ["First name", "Last name", "Customer Email", "Notes"],
+    "input_csv_rows": 3,
+    "include_unmatched_columns": false,
+    "filter_invalid_rows": false,
+    "headers_received": {
+      "host": "webhook.site",
+      "accept-encoding": "gzip, compress, deflate, br",
+      "content-length": "593",
+      "user-agent": "axios/1.10.0",
+      "x-pd-upload-body": "1",
+      "webhook-secret": "2af700ce-94cc-4ee9-bf61-8eb817af3b94",
+      "content-type": "application/json",
+      "accept": "application/json, text/plain, */*"
+    }
+  },
+  "body": {
+    "uploadId": 274300290,
+    "importerId": "82b18e5e-6412-4102-901a-ce3c05d71460",
+    "fileName": "sample-tenants.csv",
+    "matchedColumnsMap": {
+      "email": "Customer Email",
+      "last_name": "Last name",
+      "first_name": "First name"
+    },
+    "uploadedFileHeaders": [
+      "First name",
+      "Last name",
+      "Customer Email",
+      "Notes"
+    ],
+    "batch": {
+      "index": 1,
+      "count": 1,
+      "totalRows": 3
+    },
+    "user": null,
+    "metadata": null,
+    "rows": [
+      { "row": 1, "first_name": "Alice", "last_name": "Smith", "email": "alice@example.com" },
+      { "row": 2, "first_name": "Bob", "last_name": "Jones", "email": "bob@example.com" },
+      { "row": 3, "first_name": "Carol", "last_name": "Lee", "email": "carol.lee@example.com" }
+    ]
+  }
+}

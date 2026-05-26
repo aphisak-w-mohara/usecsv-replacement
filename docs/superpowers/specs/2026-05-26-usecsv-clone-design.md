@@ -349,7 +349,8 @@ X-Evo-Timestamp: 1748275200        ← only when signing is enabled
 - `rows[i].row` is the **1-based source row number**, echoed back by Laravel in error responses.
 - `user` and `metadata` are either the JSON objects from the upload context form, or `null` — never `undefined`, never omitted.
 - The outbound payload does **not** include an environment field. Each environment has its own webhook URL.
-- **`matchedColumnsMap` direction is `{ <importer_column_name>: <original_file_header> }`** — keys are machine names from `importer_columns.name`, values are the raw header strings the uploader's file used. This matches usecsv's docs and the existing Laravel fixtures (`tests/Mocks/Imports/Tenants/import-success.json` etc.). Inverting this is a silent breakage — Laravel does not validate the map structure but downstream tooling (audit logs, error CSV generation) depends on the direction.
+- **`matchedColumnsMap` direction is `{ <importer_column_name>: <original_file_header> }`** — keys are machine names from `importer_columns.name`, values are the raw header strings the uploader's file used. **Confirmed empirically on 2026-05-26** by running a live import through usecsv.com against webhook.site (see `captured-payloads/2026-05-26-usecsv-live-webhook.json`): the payload was `{"email": "Customer Email", "last_name": "Last name", "first_name": "First name"}`. Inverting this is a silent breakage — Laravel does not validate the map structure but downstream tooling depends on the direction.
+- **`uploadedFileHeaders` always contains ALL original file headers**, including columns the user did not match. Confirmed empirically: even when `include_unmatched_columns=false`, the unmatched `Notes` header appeared in `uploadedFileHeaders`. Only `rows[]` cell data is filtered. This means: receivers can detect "this upload had columns we don't know about" without needing the rows to carry them.
 - **`rows[i]` keys are `importer_columns.name` values verbatim.** Laravel's import code accesses these via PHP array dereference: `TenantsImport.php` reads `$row['first_name']`, `$row['email']`, `$row['mobile_number']`, `$row['property_id']`, `$row['organisation']`, `$row['property_start_date']`, `$row['property_end_date']`, `$row['customer_resident_reference']`, `$row['row']`. `PropertiesImport.php` reads `$row['property_id']`, `$row['house_name']`, `$row['street']`, `$row['place']`, `$row['postal_code']`, `$row['residence_type']`, `$row['country']`, `$row['uprn']`, `$row['main_heating_source']`, `$row['organisation']`, `$row['key_safe_code']`, `$row['door_entry_code']`, `$row['row']`. **The `tools/seed-evo-importers.ts` seed MUST produce `importer_columns.name` rows that exactly match these PHP keys** — drift here is silent corruption.
 
 ### Inbound — Laravel's response
@@ -378,6 +379,8 @@ X-Evo-Timestamp   = Unix epoch seconds (10-digit integer string)
 - **Signature comparison is constant-time** on both sides (`hash_equals` in PHP, `timingSafeEqual` equivalents in TS).
 
 Off by default. When the admin enables it for the first time, the UI shows the secret once and a copy-paste Laravel middleware snippet (~15 lines: parse `X-Evo-Timestamp`, recompute HMAC over `$timestamp . '.' . $request->getContent()`, `hash_equals` compare, reject if skew > 300s) to add to `evo-laravel-server/app/Http/Middleware/VerifyEvoCsvSignature.php`.
+
+**Context: usecsv's actual webhook auth (empirically observed 2026-05-26).** usecsv sends the account-wide webhook secret as a **plaintext bearer token in the `webhook-secret` header**, not as a signature. This means anyone capturing the request body sees the secret in the clear and can replay it indefinitely; rotation is the only mitigation. Our HMAC-with-timestamp scheme is strictly better — the secret never crosses the wire, the timestamp blocks replay, and per-importer-environment secrets blast-radius the impact of a leak. Laravel currently doesn't verify either; the migration story is: keep accepting unverified webhooks during cutover, enable HMAC per-importer-environment once the Laravel middleware lands.
 
 ### Retry / idempotency
 
@@ -719,3 +722,4 @@ GitHub Actions CI/CD is post-MVP.
 - npm: [@usecsv/js](https://www.npmjs.com/package/@usecsv/js), [@usecsv/react](https://www.npmjs.com/package/@usecsv/react)
 - Live admin (reference account): `app.usecsv.com/admin` (creds in `usecsv-credentials.txt`, gitignored)
 - Screenshots of usecsv admin/importer: [usecsv-screenshots/](../../../usecsv-screenshots/)
+- Captured live webhook payload (2026-05-26): [captured-payloads/2026-05-26-usecsv-live-webhook.json](../../../captured-payloads/2026-05-26-usecsv-live-webhook.json) — used for the snapshot test fixture
