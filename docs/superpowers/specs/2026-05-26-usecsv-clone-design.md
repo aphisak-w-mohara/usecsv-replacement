@@ -32,7 +32,7 @@ The Laravel side is real and battle-tested. Files referenced throughout this spe
 | Multi-tenant (projects) for future Mohara products | Themes, multi-language (English only) |
 | Multi-environment per project (prod/staging/uat) | Validation hooks (`onRecordsInitial`, `onRecordEdit`) |
 | Google SSO authentication | Email/password auth, magic links |
-| Optional per-importer HMAC webhook signing | Mandatory signing (existing Laravel keeps working) |
+| Optional per-(importer × environment) HMAC webhook signing | Mandatory signing (existing Laravel keeps working) |
 | Property + Tenants column schemas seeded from Laravel | Other entity types (Job Requests, etc.) |
 | Per-upload context (`user`/`metadata` form) for audit trail | Client-facing self-service portal |
 
@@ -89,7 +89,7 @@ One Cloudflare project, one deployed Worker, one hostname.
 2. (One-time per importer) An admin creates importer "Tenants" with column schema + per-env webhook URL → API stores in D1 → returns `key=<uuid>` for the (importer × env) pair.
 3. To run an upload: dev team member opens `/admin/importers/:id/upload`. Step 0 is an optional **upload context form** (`user` and `metadata` JSON, ticket reference, free-text note). Step 1–4 is the wizard: Upload File → Match Columns → Review & Edit → Submit.
 4. SPA parses CSV/XLSX client-side (PapaParse + SheetJS), fuzzy-suggests column map, surfaces validation errors in a virtualized grid for inline editing, then submits.
-5. SPA `POST /api/uploads` to create upload → `POST /api/uploads/:id/batches/:idx` for each chunk of 1000 rows. API stores rows in R2 (`uploads/<id>/batches/<idx>.json`) and queues a webhook dispatch job per batch.
+5. SPA `POST /api/uploads` to create upload — the body includes `total_rows`, `batch_size`, and `batch_count = ceil(total_rows / batch_size)` computed client-side, so the queue dispatcher knows the final `batch.count` value to embed in every batch payload before any batch is submitted. Then `POST /api/uploads/:id/batches/:idx` for each chunk. API stores rows in R2 (`uploads/<id>/batches/<idx>.json`) and queues a webhook dispatch job per batch.
 6. Queue consumer drains jobs **in batch.index order**: POSTs the canonical payload to the importer-environment's webhook URL, signs if enabled, captures the 200-with-errors response, writes a `webhook_attempts` row. Admin UI polls `/api/uploads/:id` for status.
 
 ## Data model
@@ -124,8 +124,8 @@ users
   google_sub TEXT unique                  -- Google's stable subject id
   name TEXT
   picture_url TEXT NULL
-  last_active_project_id TEXT NULL
-  last_active_environment_id TEXT NULL
+  last_active_project_id TEXT NULL       -- authoritative; KV session is a cache
+  last_active_environment_id TEXT NULL   -- written when user switches via nav
   created_at INTEGER
 
 memberships                               -- baseline project access
@@ -192,12 +192,21 @@ importer_environments                     -- per-(importer × env) delivery conf
   webhook_secret TEXT NULL                -- only if signing enabled; rotatable
   batch_size INTEGER DEFAULT 1000
   filter_invalid_rows INTEGER DEFAULT 0
+    -- 0 = ship all rows to webhook (including invalid ones); user is warned in UI.
+    -- 1 = drop invalid rows client-side before submission (they never reach Laravel).
   include_unmatched_columns INTEGER DEFAULT 0
+    -- 0 = strip columns that weren't mapped to an importer_column.
+    -- 1 = include them in `rows[i]` keyed by the original file header.
   UNIQUE(importer_id, environment_id)
 
 uploads
   id TEXT pk                              -- public id (ulid)
-  numeric_id INTEGER unique               -- 1-based auto-increment; goes in webhook `uploadId`
+  numeric_id INTEGER unique               -- goes in webhook `uploadId` (Laravel validates as integer).
+                                          -- Generated via a small `sequences` table (one row per
+                                          -- sequence name) using `UPDATE sequences SET value=value+1
+                                          -- WHERE name='upload_numeric' RETURNING value`. D1 supports
+                                          -- this; AUTOINCREMENT can't be used here because `id` is
+                                          -- already the primary key.
   project_id TEXT fk
   importer_environment_id TEXT fk
   file_name TEXT
@@ -205,13 +214,18 @@ uploads
   r2_source_key TEXT
   matched_columns_map TEXT                -- json
   uploaded_file_headers TEXT              -- json
-  user_payload TEXT NULL                  -- json from ?user=
-  metadata_payload TEXT NULL              -- json from ?metadata=
+  user_payload TEXT NULL                  -- json from upload context form; auto-fills userId=<member email>
+  metadata_payload TEXT NULL              -- json from upload context form (ticket ref, free-text note, etc.)
   total_rows INTEGER
   batch_size INTEGER
   batch_count INTEGER
   status TEXT                             -- 'pending'|'dispatching'|'completed'|'halted'|'failed'
   created_at INTEGER, updated_at INTEGER
+
+sequences                                 -- small KV-style table for monotonic counters
+  name TEXT pk                            -- 'upload_numeric'
+  value INTEGER NOT NULL DEFAULT 0
+  -- seeded with one row at migration time; updated via UPDATE ... RETURNING value
 
 webhook_attempts
   id TEXT pk
@@ -227,14 +241,16 @@ webhook_attempts
 
 ### Effective permission resolver
 
+**Override semantics:** if an `environment_grants` row exists for `(user, environment)`, it **replaces** the project-level role in that environment — either elevating (viewer + env_grant member = member) or restricting (member + env_grant viewer = viewer). If no grant exists, fall back to the project membership role.
+
 ```
 effective_role(user, project, environment) =
-  strongest_of(
-    memberships[project, user]?.role,
-    environment_grants[project, user, environment]?.role,
-    'none'
-  )
+  environment_grants[project, user, environment]?.role
+  ?? memberships[project, user]?.role
+  ?? 'none'
 ```
+
+This is **not** `strongest_of` and **not** `intersection`. It is "explicit override beats baseline." The EVO example below relies on this — Bob has a `member` baseline but is restricted to `viewer` in production via an explicit env_grant.
 
 Capability matrix:
 
@@ -300,7 +316,7 @@ X-Evo-Timestamp: 1748275200        ← only when signing is enabled
   "uploadId": 1842,
   "fileName": "tenants_may2026.csv",
   "importerId": "ad7c...-...-...",
-  "matchedColumnsMap": { "Customer Email": "email", "First name": "first_name" },
+  "matchedColumnsMap": { "first_name": "First name", "email": "Customer Email" },
   "uploadedFileHeaders": ["First name", "Last name", "Customer Email"],
   "batch":    { "index": 1, "count": 5, "totalRows": 4321 },
   "user":     { "userId": "12345" },
@@ -317,8 +333,10 @@ X-Evo-Timestamp: 1748275200        ← only when signing is enabled
 - `importerId` is a **UUID string** (specifically `importer_environments.key`, since the importer + environment together identify the source of an upload — naming kept for compatibility).
 - `batch.index` is **1-based**. Final batch is `batch.index === batch.count`. Laravel's [TenantsImport.php:177-188](evo-laravel-server/app/Imports/TenantsImport.php) relies on this equality to dispatch follow-up jobs (`NewResidentEmail`, `ValidateTenantNumber`, `TenantReport`). Off-by-one breaks tenant onboarding.
 - `rows[i].row` is the **1-based source row number**, echoed back by Laravel in error responses.
-- `user` and `metadata` are either the parsed JSON objects from URL query params, or `null` — never `undefined`, never omitted.
+- `user` and `metadata` are either the JSON objects from the upload context form, or `null` — never `undefined`, never omitted.
 - The outbound payload does **not** include an environment field. Each environment has its own webhook URL.
+- **`matchedColumnsMap` direction is `{ <importer_column_name>: <original_file_header> }`** — keys are machine names from `importer_columns.name`, values are the raw header strings the uploader's file used. This matches usecsv's docs and the existing Laravel fixtures (`tests/Mocks/Imports/Tenants/import-success.json` etc.). Inverting this is a silent breakage — Laravel does not validate the map structure but downstream tooling (audit logs, error CSV generation) depends on the direction.
+- **`rows[i]` keys are `importer_columns.name` values verbatim.** Laravel's import code accesses these via PHP array dereference: `TenantsImport.php` reads `$row['first_name']`, `$row['email']`, `$row['mobile_number']`, `$row['property_id']`, `$row['organisation']`, `$row['property_start_date']`, `$row['property_end_date']`, `$row['customer_resident_reference']`, `$row['row']`. `PropertiesImport.php` reads `$row['property_id']`, `$row['house_name']`, `$row['street']`, `$row['place']`, `$row['postal_code']`, `$row['residence_type']`, `$row['country']`, `$row['uprn']`, `$row['main_heating_source']`, `$row['organisation']`, `$row['key_safe_code']`, `$row['door_entry_code']`, `$row['row']`. **The `tools/seed-evo-importers.ts` seed MUST produce `importer_columns.name` rows that exactly match these PHP keys** — drift here is silent corruption.
 
 ### Inbound — Laravel's response
 
@@ -334,11 +352,18 @@ Laravel always returns `200 OK` with body `{ "errors": [{ "row": <int>, "msg": "
 ### Signing (when enabled)
 
 ```
-signature_payload = "<X-Evo-Timestamp>.<raw body>"
-X-Evo-Signature   = "sha256=" + hex(hmac_sha256(importer_env.webhook_secret, signature_payload))
+signature_payload = utf8_bytes(X-Evo-Timestamp + "." + raw_body_bytes)
+X-Evo-Signature   = "sha256=" + hex_lower(hmac_sha256(importer_env.webhook_secret, signature_payload))
+X-Evo-Timestamp   = Unix epoch seconds (10-digit integer string)
 ```
 
-Off by default. When the admin enables it for the first time, the UI shows the secret once and a copy-paste Laravel middleware snippet (~15 lines: constant-time compare + 5-min timestamp skew window) to add to `evo-laravel-server/app/Http/Middleware/VerifyEvoCsvSignature.php`.
+**Construction rules** (these matter for verification correctness):
+
+- **HMAC is computed over the exact bytes that go on the wire**, before any JSON parsing or re-serialisation. In the Worker dispatcher, the bytes are constructed once via `JSON.stringify(payload)`, signed, and sent — never round-tripped through `JSON.parse → JSON.stringify`, which would risk key-order or Unicode-escape drift.
+- **Timestamp is Unix seconds**, not milliseconds. The Laravel verification middleware must reject any request whose `X-Evo-Timestamp` differs from server time by more than 5 minutes (replay window).
+- **Signature comparison is constant-time** on both sides (`hash_equals` in PHP, `timingSafeEqual` equivalents in TS).
+
+Off by default. When the admin enables it for the first time, the UI shows the secret once and a copy-paste Laravel middleware snippet (~15 lines: parse `X-Evo-Timestamp`, recompute HMAC over `$timestamp . '.' . $request->getContent()`, `hash_equals` compare, reject if skew > 300s) to add to `evo-laravel-server/app/Http/Middleware/VerifyEvoCsvSignature.php`.
 
 ### Retry / idempotency
 
@@ -388,6 +413,9 @@ SSO sign-in is **closed by default** — only pre-existing members or holders of
    ├─ email match (no sub)   → bind sub → create session
    │                            (handles bootstrapped users + pending invites)
    ├─ pending invite by email → create user, bind sub, materialize membership → session
+   │                            (the invite token is carried through OAuth via the
+   │                            `state` param — set when the user clicks /invites/:token
+   │                            and validated against `invites.token` + email in callback)
    └─ otherwise              → 403 "Not authorized. Ask a project owner for an invite."
                                 Do NOT create a users row.
 7. Redirect to original /admin URL
@@ -406,12 +434,17 @@ pnpm bootstrap \
   --allowed-domain "mohara.co"
 ```
 
-Implemented in `tools/bootstrap.ts` as a thin wrapper around `wrangler d1 execute`. In one transaction it:
+Implemented in `tools/bootstrap.ts` as a thin wrapper around `wrangler d1 execute`. In one transaction, **idempotent on `(project.slug, user.email)`**:
 
-1. Inserts a `projects` row with `slug`, `name`, `allowed_email_domain`.
-2. Inserts a `users` row with `email`, `name`, and `google_sub = NULL` (filled in on first SSO match).
-3. Inserts a `memberships` row with `role = 'owner'`.
-4. Inserts a default `environments` row (`slug='production'`, `is_default=1`).
+1. `INSERT OR IGNORE` into `projects` keyed on `slug` (preserves any existing `allowed_email_domain`; pass `--update-domain` to overwrite).
+2. `INSERT OR IGNORE` into `users` keyed on `email` (preserves any existing `google_sub`).
+3. `INSERT INTO memberships ... ON CONFLICT(project_id, user_id) DO UPDATE SET role='owner'` — promotes an existing membership to owner if one exists; inserts otherwise.
+4. `INSERT OR IGNORE` into `environments` (`slug='production'`, `is_default=1`).
+
+This makes re-running safe in three scenarios:
+- **Fresh deploy:** all 4 rows inserted.
+- **Disaster recovery (lost owner access):** new email is added to existing project as owner without disturbing other members.
+- **Promoting an existing teammate to owner:** their membership is upserted to `role='owner'`.
 
 The human then signs in via Google SSO; the callback finds the pre-seeded user by email, binds `google_sub`, and they land in the project as owner.
 
@@ -473,7 +506,7 @@ Authenticated route. Five steps:
 0. **Upload context** (optional) — small form: target environment (defaults to selected env from nav), free-text note, ticket reference, and any extra `user` / `metadata` JSON the dev team wants attached to the webhook payload. `user.userId` auto-fills with the logged-in dev team member's email so Laravel side has audit context.
 1. **Upload File** — drag-drop or browse. Accepts `.csv` / `.xlsx` / `.xls` / `.tsv`. Parsed client-side with PapaParse + SheetJS. Default encoding UTF-8.
 2. **Match Columns** — fuzzy auto-suggest (Levenshtein on lowercased names); user adjusts dropdowns; validates all required columns are matched before "Next".
-3. **Review & Edit** — virtualized grid (TanStack Table) showing parsed rows with per-cell validation status. Errors red, warnings yellow. Filter to "errors only". Inline cell edits re-validate live.
+3. **Review & Edit** — virtualized grid (TanStack Table) showing parsed rows with per-cell validation status. Errors red, warnings yellow. Filter to "errors only". Inline cell edits re-validate live. **MVP cap: 50,000 rows per upload.** EVO's real imports are typically dozens to low thousands; the cap exists because PapaParse + SheetJS parse fully into JS arrays on the main thread, and 100k+ rows would freeze the tab on a mid-range laptop. If a larger upload is needed, the file is rejected at step 1 with a clear error pointing to splitting it. Streaming / web-worker parse is in "future work".
 4. **Submit & Progress** — live progress bar via polling `/api/uploads/:id`. When complete: success summary + per-row errors echoed from Laravel + downloadable error CSV.
 
 Client-side parsing means **the source file never leaves the browser unless validation passes** — small privacy win, also matters because client CSVs may contain PII.
@@ -603,7 +636,7 @@ evo-usecsv/
 | Server state | TanStack Query | cache + retries on importer flow polling |
 | Styling | Tailwind v4 + Radix primitives | minimal runtime, accessible primitives |
 | CSV/XLSX parse | PapaParse + SheetJS | client-side, no server upload until validated |
-| Tables | TanStack Table + virtualization | review grid must handle 100k rows |
+| Tables | TanStack Table + virtualization | review grid handles up to 50k rows (MVP cap, see Upload Wizard step 3) |
 | Fuzzy match | `match-sorter` | tiny, fits column-match suggester |
 | IDs | `ulid` internal, `crypto.randomUUID()` public | sortable internal, opaque public |
 
@@ -611,7 +644,7 @@ evo-usecsv/
 
 | Layer | What it proves | How |
 |---|---|---|
-| **1. Payload snapshot test** | byte-equal output vs Laravel's existing mocks | `pnpm test webhook-shape` — feeds a canned upload through the dispatch pipeline (mocking only outbound `fetch`), captures the request body, diffs against `evo-laravel-server/tests/Mocks/Imports/Tenants/import-success.json`. Failing this test blocks deploy. |
+| **1. Payload snapshot test** | shape-equal output vs Laravel's existing mocks (Tenants + Properties) | `pnpm test webhook-shape` — feeds a canned upload through the dispatch pipeline (mocking only outbound `fetch`), seeds a deterministic `uploads.numeric_id` to match the fixture's `uploadId`, captures the request body, diffs against both `evo-laravel-server/tests/Mocks/Imports/Tenants/import-success.json` and `tests/Mocks/Properties/import-success.json`. Comparison is structural (not byte-equal) to avoid flakiness on field order, but explicitly asserts `matchedColumnsMap` direction (`{ machine_name: file_header }`, not the reverse). Failing this test blocks deploy. |
 | **2. Drizzle migrations apply cleanly** | schema + indexes valid on fresh D1 | `pnpm db:migrate` against a throwaway D1 created with `wrangler d1 create`. |
 | **3. Local E2E against real Laravel** | full happy path lands rows in Laravel | `pnpm dev:full` boots `wrangler dev` + a `cloudflared tunnel` exposing the local Laravel server. Manually drive: create importer → set webhook URL to tunnel → upload sample CSV → confirm tenant row in Laravel DB. |
 | **4. Retry / halt unit tests** | queue consumer behaves on 5xx, timeout, partial errors | Vitest with stubbed fetch; assert `webhook_attempts` rows + final `upload.status`. |
