@@ -49,6 +49,7 @@ The Laravel side is real and battle-tested. Files referenced throughout this spe
 | 7 | Webhook payload byte-identical to usecsv's (incl. 1-based `batch.index`) | locked |
 | 8 | No anonymous public-URL flow; the only unauthenticated routes are `/login` and `/invites/:token` | locked |
 | 9 | Closed SSO signup: callback rejects unknown emails (no auto-account-creation). First owner seeded by one-shot CLI bootstrap | locked |
+| 10 | Two roles only: **owner** (manages org chart) and **member** (full self-service inside granted envs). Env access is a binary allowlist, not a role gradation | locked |
 
 ## Architecture
 
@@ -128,10 +129,12 @@ users
   last_active_environment_id TEXT NULL   -- written when user switches via nav
   created_at INTEGER
 
-memberships                               -- baseline project access
+memberships                               -- project access; two roles only
   project_id TEXT fk
   user_id TEXT fk
-  role TEXT                               -- 'owner' | 'admin' | 'member' | 'viewer'
+  role TEXT                               -- 'owner' | 'member'
+                                          -- owner: manages env list + members + env_grants.
+                                          -- member: full self-service inside envs they're granted.
   PRIMARY KEY (project_id, user_id)
 
 invites
@@ -154,12 +157,15 @@ environments
   created_at INTEGER
   UNIQUE(project_id, slug)
 
-environment_grants                        -- additive, env-scoped role override
+environment_grants                        -- presence-only allowlist of (user × env)
   project_id TEXT fk
   user_id TEXT fk
   environment_id TEXT fk
-  role TEXT                               -- 'admin' | 'member' | 'viewer'
+  granted_at INTEGER
+  granted_by TEXT fk users.id             -- audit trail; the owner who granted access
   PRIMARY KEY (project_id, user_id, environment_id)
+  -- No role column. Row presence = full self-service access in that env.
+  -- Owners have implicit access to all envs in their project; no row needed.
 
 importers
   id TEXT pk
@@ -241,30 +247,38 @@ webhook_attempts
 
 ### Effective permission resolver
 
-**Override semantics:** if an `environment_grants` row exists for `(user, environment)`, it **replaces** the project-level role in that environment — either elevating (viewer + env_grant member = member) or restricting (member + env_grant viewer = viewer). If no grant exists, fall back to the project membership role.
+Two boolean checks. The owner check gates the "managing org chart" surface; the env-access check gates everything that happens inside an environment.
 
 ```
-effective_role(user, project, environment) =
-  environment_grants[project, user, environment]?.role
-  ?? memberships[project, user]?.role
-  ?? 'none'
+is_owner(user, project) =
+  exists(memberships where user, project, role = 'owner')
+
+can_access_env(user, project, environment) =
+  is_owner(user, project)
+  OR exists(environment_grants where user, project, environment)
 ```
 
-This is **not** `strongest_of` and **not** `intersection`. It is "explicit override beats baseline." The EVO example below relies on this — Bob has a `member` baseline but is restricted to `viewer` in production via an explicit env_grant.
+Owners implicitly have access to every environment in their project (no env_grant rows needed). Members have access only to environments where an explicit `environment_grants` row exists. There is no "viewer" tier — env access is binary; if you have it, you can do anything functional inside.
 
 Capability matrix:
 
-| Capability | viewer | member | admin | owner |
-|---|:-:|:-:|:-:|:-:|
-| See importer list + history in env | ✅ | ✅ | ✅ | ✅ |
-| **Run a CSV upload in env** | — | ✅ | ✅ | ✅ |
-| Retry a failed batch | — | ✅ | ✅ | ✅ |
-| Edit importer settings / columns | — | — | ✅ | ✅ |
-| Rotate webhook secret | — | — | ✅ | ✅ |
-| Create/delete environments | — | — | — | ✅ |
-| Invite members, assign project roles | — | — | — | ✅ |
+| Capability | member, no env access | member, env access | owner |
+|---|:-:|:-:|:-:|
+| See importer list + history in env | — | ✅ | ✅ |
+| Run a CSV upload in env | — | ✅ | ✅ |
+| Retry a failed batch | — | ✅ | ✅ |
+| Create / edit / archive importers | — | ✅ | ✅ |
+| Edit importer column schema *(see cross-env note below)* | — | ✅ | ✅ |
+| Set webhook URL / batch_size / flags per env | — | ✅ | ✅ |
+| Rotate webhook secret in env | — | ✅ | ✅ |
+| Create / delete environments | — | — | ✅ |
+| Invite or remove project members | — | — | ✅ |
+| Grant or revoke env access (env_grants rows) | — | — | ✅ |
+| Set project name, `allowed_email_domain` | — | — | ✅ |
 
-Every action requires an authenticated session. There is no anonymous surface — possession of an importer key is **not** a capability; the dev team member must have an authenticated session with the `member` role (or higher) in the target environment to upload.
+**Cross-env effect on column schemas:** `importer_columns` rows are project-level (shared across all environments of an importer). A member with access to *any* environment of an importer can therefore edit the schema, which affects every environment. This is intentional — schemas are a project-level decision, and the team is trusted within their granted envs. If finer control is needed later, the alternative is to require access to *all* envs of the importer before allowing schema edits; not in MVP.
+
+Every action requires an authenticated session. There is no anonymous surface — possession of an importer key is **not** a capability; a member with no env_grant for the target environment is treated identically to a non-member (404 on routes scoped to that env).
 
 ### R2 layout
 
@@ -376,7 +390,17 @@ For each importer EVO currently has on usecsv.com:
 
 1. In our admin, create the corresponding importer + columns (use `tools/seed-evo-importers.ts` for "Tenants" and "Properties").
 2. For each environment (production / staging / uat), set the same webhook URL EVO already configured in usecsv.
-3. Invite the dev team via Google SSO; assign `environment_grants` so each member has the right access per env (e.g., junior devs limited to staging+uat). Decommission the usecsv.com side.
+3. Invite the dev team via Google SSO; assign `environment_grants` so each member has the right access per env. Decommission the usecsv.com side.
+
+   Concrete EVO setup illustrating the two-role model:
+
+   | Person | Role | env_grants | What they can do |
+   |---|---|---|---|
+   | Aphisak (tech lead) | `owner` | implicit (all envs) | Everything: manage org chart, create envs, grant access, plus all functional actions in every env |
+   | Senior dev | `member` | production, staging, uat | Full self-service in all three envs: create importers, edit columns, run uploads, rotate secrets |
+   | Junior dev | `member` | staging, uat | Same self-service, but no visibility or action on production |
+   | DevOps engineer | `member` | production | Full self-service in production only |
+   | Auditor (none of the above today) | (not invited) | — | No access. If needed later, add a `viewer` role — not in MVP. |
 
 **No Laravel code change required for MVP.** When/if EVO enables signing per importer-environment, ship a one-PR addition to `evo-laravel-server` adding the verification middleware.
 
@@ -534,8 +558,8 @@ export type AppType = typeof app;
 Every route under `/api/*` (except `/api/auth/*`) requires a session. On top of that:
 
 1. `requireSession` middleware: reads session cookie → KV → `{ user_id, project_id, environment_id }` → 401 if missing.
-2. `withProject` middleware: validates the active project, attaches `effective_role` to context.
-3. `withEnvironment` middleware (where relevant): does the same for the selected environment.
+2. `withProject` middleware: validates the active project, attaches `is_owner` to context.
+3. `withEnvironment` middleware (where relevant): resolves the env, asserts `can_access_env(user, project, env)`; 404 otherwise. Owners pass through implicitly.
 4. Every D1 query goes through a thin repo layer that **forces project_id (and env_id where applicable) into WHERE**. The repo never accepts these IDs from request body — only from context.
 
 IDOR attempts (forging `project_id` in body/query) return 404, not 403 — 403 leaks existence.
@@ -649,7 +673,7 @@ evo-usecsv/
 | **3. Local E2E against real Laravel** | full happy path lands rows in Laravel | `pnpm dev:full` boots `wrangler dev` + a `cloudflared tunnel` exposing the local Laravel server. Manually drive: create importer → set webhook URL to tunnel → upload sample CSV → confirm tenant row in Laravel DB. |
 | **4. Retry / halt unit tests** | queue consumer behaves on 5xx, timeout, partial errors | Vitest with stubbed fetch; assert `webhook_attempts` rows + final `upload.status`. |
 | **5. Multi-tenant isolation** | no IDOR via id substitution | Repo-layer test: every CRUD route with forged `project_id` / `environment_id` in body/query must return 404; missing-session must return 401. |
-| **6. Permission matrix** | env_grants computed correctly | Unit tests for `effective_role()` covering each cell in the capability matrix. |
+| **6. Permission matrix** | both checks behave correctly | Unit tests for `is_owner()` and `can_access_env()`. Plus integration tests: a member without an env_grant gets 404 on every route scoped to that env; an owner can do everything regardless of env_grants. |
 | **7. Google SSO callback** | match / invite / domain-restricted / unauthorized branches | Vitest with mocked `@hono/oauth-providers`; verify the "no match, no invite" branch returns 403 and creates no users row. |
 | **8. Bootstrap CLI** | seeds a project + owner + default env idempotently | Run against a throwaway D1: `pnpm bootstrap --email test@example.com --project-slug demo` → assert rows exist; second run with same slug exits 0 without duplicating. |
 
