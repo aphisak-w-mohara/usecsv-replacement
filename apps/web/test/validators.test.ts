@@ -105,36 +105,27 @@ describe("validateCell — phone", () => {
 describe("validateCell — date", () => {
   it("accepts DD/MM/YYYY when format is '27/03/1998'", () => {
     expect(
-      validateCell(
-        "27/03/1998",
-        col({ validation_type: "date", validation_format: "27/03/1998" }),
-      ).ok,
+      validateCell("27/03/1998", col({ validation_type: "date", validation_format: "27/03/1998" }))
+        .ok,
     ).toBe(true);
   });
 
   it("accepts YYYY-MM-DD when format is '1998-03-27'", () => {
     expect(
-      validateCell(
-        "1998-03-27",
-        col({ validation_type: "date", validation_format: "1998-03-27" }),
-      ).ok,
+      validateCell("1998-03-27", col({ validation_type: "date", validation_format: "1998-03-27" }))
+        .ok,
     ).toBe(true);
   });
 
   it("rejects DD/MM/YYYY input against YYYY-MM-DD format", () => {
     expect(
-      validateCell(
-        "27/03/1998",
-        col({ validation_type: "date", validation_format: "1998-03-27" }),
-      ).ok,
+      validateCell("27/03/1998", col({ validation_type: "date", validation_format: "1998-03-27" }))
+        .ok,
     ).toBe(false);
   });
 
   it("returns error when validation_format is missing for a date column", () => {
-    const result = validateCell(
-      "any",
-      col({ validation_type: "date", validation_format: null }),
-    );
+    const result = validateCell("any", col({ validation_type: "date", validation_format: null }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toMatch(/no.*format/i);
   });
@@ -143,13 +134,19 @@ describe("validateCell — date", () => {
 describe("validateCell — regex", () => {
   it("accepts values matching the format pattern", () => {
     expect(
-      validateCell("ABC-123", col({ validation_type: "regex", validation_format: "^[A-Z]{3}-\\d{3}$" })).ok,
+      validateCell(
+        "ABC-123",
+        col({ validation_type: "regex", validation_format: "^[A-Z]{3}-\\d{3}$" }),
+      ).ok,
     ).toBe(true);
   });
 
   it("rejects values that don't match", () => {
     expect(
-      validateCell("abc-123", col({ validation_type: "regex", validation_format: "^[A-Z]{3}-\\d{3}$" })).ok,
+      validateCell(
+        "abc-123",
+        col({ validation_type: "regex", validation_format: "^[A-Z]{3}-\\d{3}$" }),
+      ).ok,
     ).toBe(false);
   });
 
@@ -191,7 +188,8 @@ describe("validateCell — boolean", () => {
       validateCell("true", col({ validation_type: "boolean", validation_format: "true,false" })).ok,
     ).toBe(true);
     expect(
-      validateCell("false", col({ validation_type: "boolean", validation_format: "true,false" })).ok,
+      validateCell("false", col({ validation_type: "boolean", validation_format: "true,false" }))
+        .ok,
     ).toBe(true);
   });
 
