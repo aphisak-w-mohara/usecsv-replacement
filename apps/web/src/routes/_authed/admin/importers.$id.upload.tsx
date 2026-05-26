@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   StepContext,
   type StepContextSubmit,
 } from "../../../components/upload-wizard/step-context";
+import { StepMatchColumns } from "../../../components/upload-wizard/step-match-columns";
 import { StepUploadFile } from "../../../components/upload-wizard/step-upload-file";
 import { WizardShell } from "../../../components/upload-wizard/wizard-shell";
+import { api } from "../../../lib/api";
+import type { ImporterColumn } from "../../../lib/fuzzy-match";
 import type { ParseSuccess } from "../../../lib/parse-file";
 
 export const Route = createFileRoute("/_authed/admin/importers/$id/upload")({
@@ -15,12 +18,43 @@ export const Route = createFileRoute("/_authed/admin/importers/$id/upload")({
 type WizardState = {
   context: StepContextSubmit | null;
   parsed: ParseSuccess | null;
+  matched: Record<string, string> | null;
 };
 
 function UploadWizardRoute() {
   const { id } = Route.useParams();
-  const [activeStep, setActiveStep] = useState<0 | 1>(0);
-  const [state, setState] = useState<WizardState>({ context: null, parsed: null });
+  const [activeStep, setActiveStep] = useState<0 | 1 | 2>(0);
+  const [state, setState] = useState<WizardState>({
+    context: null,
+    parsed: null,
+    matched: null,
+  });
+  const [importerColumns, setImporterColumns] = useState<ImporterColumn[] | null>(null);
+  const [columnsError, setColumnsError] = useState<string | null>(null);
+
+  // Fetch importer columns once per importer id.
+  useEffect(() => {
+    let cancelled = false;
+    setColumnsError(null);
+
+    async function load() {
+      try {
+        const res = await api.api.importers[":importer_id"].columns.$get({
+          param: { importer_id: id },
+        });
+        if (!res.ok) throw new Error(`Failed to fetch columns: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setImporterColumns(data.columns as ImporterColumn[]);
+      } catch (err) {
+        if (!cancelled) setColumnsError(err instanceof Error ? err.message : "Unknown error");
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   function handleContextSubmit(context: StepContextSubmit) {
     setState((s) => ({ ...s, context }));
@@ -28,10 +62,19 @@ function UploadWizardRoute() {
   }
 
   function handleFileParsed(parsed: ParseSuccess) {
+    setState((s) => ({ ...s, parsed }));
+    setActiveStep(2);
+  }
+
+  function handleMatched(matched: Record<string, string>) {
     setState((s) => {
-      // TODO(Story #4): navigate using s.context here — always current.
-      console.info("[wizard] step 1 -> step 2", { context: s.context, parsed });
-      return { ...s, parsed };
+      // TODO(Story #5): advance to Review & Edit using s.context + s.parsed + matched.
+      console.info("[wizard] step 2 -> step 3", {
+        context: s.context,
+        parsed: s.parsed,
+        matched,
+      });
+      return { ...s, matched };
     });
   }
 
@@ -45,10 +88,32 @@ function UploadWizardRoute() {
         <StepUploadFile onParsed={handleFileParsed} onBack={() => setActiveStep(0)} />
       )}
 
-      {state.parsed && (
+      {activeStep === 2 && state.parsed && (
+        <>
+          {columnsError && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              Couldn't load importer columns: {columnsError}
+            </div>
+          )}
+          {!importerColumns && !columnsError && (
+            <p className="text-sm text-slate-500">Loading importer columns…</p>
+          )}
+          {importerColumns && (
+            <StepMatchColumns
+              fileHeaders={state.parsed.headers}
+              rows={state.parsed.rows}
+              importerColumns={importerColumns}
+              onMatched={handleMatched}
+              onBack={() => setActiveStep(1)}
+            />
+          )}
+        </>
+      )}
+
+      {state.matched && (
         <p className="mt-4 text-xs text-slate-500">
-          Step 1 captured ({state.parsed.rowCount} rows from {state.parsed.fileName}). Step 2 lands
-          in Story #4.
+          Step 2 captured ({Object.keys(state.matched).length} columns mapped). Step 3 lands in
+          Story #5.
         </p>
       )}
     </WizardShell>

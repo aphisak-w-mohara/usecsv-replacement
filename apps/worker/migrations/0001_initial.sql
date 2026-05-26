@@ -63,6 +63,24 @@ CREATE TABLE importer_environments (
   UNIQUE(importer_id, environment_id)
 );
 
+-- Importer columns (schema-bearing metadata for file headers)
+CREATE TABLE importer_columns (
+  id TEXT PRIMARY KEY,
+  importer_id TEXT NOT NULL REFERENCES importers(id),
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  description TEXT,
+  example TEXT,
+  must_be_matched INTEGER NOT NULL DEFAULT 1,
+  value_cannot_be_blank INTEGER NOT NULL DEFAULT 1,
+  validation_type TEXT NOT NULL DEFAULT 'string',
+  validation_format TEXT,
+  custom_error_message TEXT,
+  UNIQUE(importer_id, position),
+  UNIQUE(importer_id, name)
+);
+
 -- Uploads
 CREATE TABLE uploads (
   id TEXT PRIMARY KEY,

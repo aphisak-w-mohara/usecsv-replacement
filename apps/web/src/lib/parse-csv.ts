@@ -44,7 +44,8 @@ export function parseCsv(file: File, delimiter: "," | "\t"): Promise<CsvParseRes
         resolve({
           headers,
           rows,
-          encoding: ((results.meta as unknown) as Record<string, unknown>).encoding as string || "UTF-8",
+          encoding:
+            ((results.meta as unknown as Record<string, unknown>).encoding as string) || "UTF-8",
         });
       },
       error: (err) => reject(err),
