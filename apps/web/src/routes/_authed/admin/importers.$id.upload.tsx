@@ -28,9 +28,11 @@ function UploadWizardRoute() {
   }
 
   function handleFileParsed(parsed: ParseSuccess) {
-    setState((s) => ({ ...s, parsed }));
-    // TODO(Story #4): navigate to Step 2 (Match Columns) once that step exists.
-    console.info("[wizard] step 1 -> step 2", { context: state.context, parsed });
+    setState((s) => {
+      // TODO(Story #4): navigate using s.context here — always current.
+      console.info("[wizard] step 1 -> step 2", { context: s.context, parsed });
+      return { ...s, parsed };
+    });
   }
 
   return (

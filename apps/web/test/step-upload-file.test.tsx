@@ -23,8 +23,8 @@ describe("StepUploadFile", () => {
   });
 
   it("renders the file preview after a successful parse", async () => {
-    render(<StepUploadFile onParsed={() => {}} onBack={() => {}} />);
-    const input = screen.getByLabelText(/upload file/i) as HTMLInputElement;
+    const { container } = render(<StepUploadFile onParsed={() => {}} onBack={() => {}} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [csvFile("tenants.csv", TENANTS_CSV)] } });
 
     await waitFor(() => {
@@ -37,8 +37,8 @@ describe("StepUploadFile", () => {
   });
 
   it("shows an error and disables Next when the file is unsupported", async () => {
-    render(<StepUploadFile onParsed={() => {}} onBack={() => {}} />);
-    const input = screen.getByLabelText(/upload file/i) as HTMLInputElement;
+    const { container } = render(<StepUploadFile onParsed={() => {}} onBack={() => {}} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [csvFile("notes.txt", "stuff")] } });
 
     await waitFor(() => {
@@ -48,8 +48,8 @@ describe("StepUploadFile", () => {
   });
 
   it('"Upload a different file" resets state', async () => {
-    render(<StepUploadFile onParsed={() => {}} onBack={() => {}} />);
-    const input = screen.getByLabelText(/upload file/i) as HTMLInputElement;
+    const { container } = render(<StepUploadFile onParsed={() => {}} onBack={() => {}} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [csvFile("tenants.csv", TENANTS_CSV)] } });
 
     await waitFor(() => {
@@ -64,8 +64,8 @@ describe("StepUploadFile", () => {
 
   it("calls onParsed with the ParseSuccess when Next is clicked", async () => {
     const onParsed = vi.fn();
-    render(<StepUploadFile onParsed={onParsed} onBack={() => {}} />);
-    const input = screen.getByLabelText(/upload file/i) as HTMLInputElement;
+    const { container } = render(<StepUploadFile onParsed={onParsed} onBack={() => {}} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [csvFile("tenants.csv", TENANTS_CSV)] } });
 
     await waitFor(() => {
@@ -78,6 +78,25 @@ describe("StepUploadFile", () => {
     expect(arg.ok).toBe(true);
     expect(arg.format).toBe("csv");
     expect(arg.rowCount).toBe(3);
+  });
+
+  it("handles a file dropped onto the drop zone", async () => {
+    const onParsed = vi.fn();
+    render(<StepUploadFile onParsed={onParsed} onBack={() => {}} />);
+
+    const dropZone = screen.getByLabelText(/upload file/i);
+    const file = csvFile("dropped.csv", TENANTS_CSV);
+
+    // Simulate a drag-and-drop sequence
+    fireEvent.dragOver(dropZone, { dataTransfer: { files: [file] } });
+    fireEvent.drop(dropZone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/dropped\.csv/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^next$/i })).toBeEnabled();
   });
 
   it("calls onBack when Back is clicked", () => {

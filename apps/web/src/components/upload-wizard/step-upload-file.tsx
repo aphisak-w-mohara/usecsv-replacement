@@ -43,11 +43,21 @@ export function StepUploadFile({ onParsed, onBack }: StepUploadFileProps) {
       </header>
 
       {state.phase === "empty" && (
-        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-sm text-slate-600 hover:bg-slate-100">
+        <label
+          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-sm text-slate-600 hover:bg-slate-100"
+          aria-label="Upload file"
+          onDragOver={(e) => {
+            e.preventDefault();
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files?.[0];
+            if (file) handleFileSelect(file);
+          }}
+        >
           <span className="font-medium text-slate-700">Click to browse or drag and drop</span>
           <span className="text-xs text-slate-500">.csv .tsv .xlsx .xls</span>
           <input
-            aria-label="Upload file"
             type="file"
             accept=".csv,.tsv,.xlsx,.xls"
             className="sr-only"
