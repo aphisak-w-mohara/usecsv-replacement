@@ -2,10 +2,21 @@ import { describe, expect, it } from "vitest";
 import { validateFile, MAX_FILE_BYTES, MAX_ROW_COUNT } from "../src/lib/file-validate";
 
 function file(name: string, size: number): File {
-  // jsdom File constructor lets us synthesize a File with arbitrary size
-  // without actually allocating that many bytes.
-  const blob = new Blob([new Uint8Array(Math.min(size, 1024))]);
-  return new File([blob], name, { type: "" });
+  // Construct a File whose .size === the requested size. We chunk the
+  // allocation in 1 MB pieces so the underlying Blob actually has the
+  // right byte count without forcing one giant heap allocation. The
+  // previous "Math.min(size, 1024)" version was a bug — it silently
+  // capped at 1 KB, so the > MAX_FILE_BYTES test was always run
+  // against a 1 KB file and passed validation regardless.
+  const chunkSize = 1024 * 1024; // 1 MB
+  const chunks: Uint8Array[] = [];
+  let remaining = size;
+  while (remaining > 0) {
+    const chunk = Math.min(remaining, chunkSize);
+    chunks.push(new Uint8Array(chunk));
+    remaining -= chunk;
+  }
+  return new File(chunks as BlobPart[], name, { type: "" });
 }
 
 describe("validateFile", () => {
