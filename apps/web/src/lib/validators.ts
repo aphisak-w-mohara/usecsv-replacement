@@ -11,6 +11,11 @@ function err(message: string): CellValidationResult {
 // The 14 usecsv date-format presets, mapped to regex patterns. Captured
 // verbatim from usecsv-screenshots/04-validation-formats.png. The keys
 // match the dropdown labels shown to admins in the importer config.
+//
+// NOTE: These regexes validate FORMAT only, not calendar validity.
+// "31/02/2024" will pass — Feb has no 31st, but the regex doesn't care.
+// This matches usecsv's own behaviour. Calendar-level validation (e.g.
+// via Date.parse() or a dedicated date lib) is intentionally deferred.
 const DATE_FORMATS: Record<string, RegExp> = {
   "27/03/1998": /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/,
   "27/03/98": /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{2}$/,

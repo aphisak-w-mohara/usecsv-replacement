@@ -129,6 +129,16 @@ describe("validateCell — date", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toMatch(/no.*format/i);
   });
+
+  it("accepts calendar-invalid dates (format-only validation, matches usecsv behaviour)", () => {
+    // 31/02/2024 — Feb has no 31st, but the regex only enforces the
+    // YYYY/MM/DD shape, not calendar validity. Documented as a known
+    // limitation; calendar checks are intentionally deferred.
+    expect(
+      validateCell("31/02/2024", col({ validation_type: "date", validation_format: "27/03/1998" }))
+        .ok,
+    ).toBe(true);
+  });
 });
 
 describe("validateCell — regex", () => {

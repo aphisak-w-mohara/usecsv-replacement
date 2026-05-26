@@ -157,8 +157,8 @@ export function StepReviewGrid({
       <header>
         <h2 className="text-lg font-semibold text-slate-900">Review &amp; submit</h2>
         <p className="text-sm text-slate-600">
-          Each mapped cell has been validated against your importer schema. Errors highlighted in
-          red — fix them later in Story #6.
+          Each mapped cell has been validated against your importer schema. Errors are highlighted
+          in red — you'll be able to edit cells inline in the next step.
         </p>
       </header>
 
