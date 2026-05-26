@@ -21,6 +21,7 @@ type WizardState = {
   parsed: ParseSuccess | null;
   matched: Record<string, string> | null;
   reviewed: boolean;
+  editedRows: Record<string, string>[] | null;
 };
 
 function UploadWizardRoute() {
@@ -31,6 +32,7 @@ function UploadWizardRoute() {
     parsed: null,
     matched: null,
     reviewed: false,
+    editedRows: null,
   });
   const [importerColumns, setImporterColumns] = useState<ImporterColumn[] | null>(null);
   const [columnsError, setColumnsError] = useState<string | null>(null);
@@ -75,17 +77,27 @@ function UploadWizardRoute() {
     setActiveStep(3);
   }
 
-  function handleReviewed() {
+  function handleReviewed(editedRows: Record<string, string>[]) {
     setState((s) => {
-      // TODO(Story #6/#7): Story #6 will add inline editing on top of this
-      // grid; Story #7 will replace this with the actual submit + batch
-      // dispatch using s.context + s.parsed + s.matched.
-      console.info("[wizard] step 3 -> step 4", {
+      // TODO(Story #7): replace this with the actual submit + batch dispatch.
+      // Story #7 will:
+      //   1. Invert s.matched (currently { machine_name: file_header }) and use
+      //      it to remap each editedRow's keys from file-header to machine-name.
+      //      This is REQUIRED — the webhook payload's rows[] must be keyed by
+      //      machine name (e.g. "first_name"), not file header (e.g. "First name").
+      //      See captured-payloads/2026-05-26-usecsv-live-webhook.json for the
+      //      exact expected shape.
+      //   2. Optionally re-run validateCell on each row if filterInvalidRows is on.
+      //   3. POST /api/uploads with the upload metadata.
+      //   4. Chunk editedRows into batches, POST /api/uploads/:id/batches/:idx
+      //      for each.
+      console.info("[wizard] step 3 -> step 4 (Story #7)", {
         context: s.context,
         parsed: s.parsed,
         matched: s.matched,
+        editedRows,
       });
-      return { ...s, reviewed: true };
+      return { ...s, reviewed: true, editedRows };
     });
   }
 
@@ -134,9 +146,10 @@ function UploadWizardRoute() {
         />
       )}
 
-      {state.reviewed && (
+      {state.reviewed && state.editedRows && (
         <p className="mt-4 text-xs text-slate-500">
-          Step 3 captured. Steps 4-5 (inline edit + submit) land in Stories #6 + #7.
+          Step 3 captured ({state.editedRows.length} rows ready for submit). Step 4 (submit + batch
+          dispatch) lands in Story #7.
         </p>
       )}
     </WizardShell>
