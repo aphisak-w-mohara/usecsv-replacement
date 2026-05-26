@@ -1,0 +1,9 @@
+{
+  "name": "@evo-csv/shared",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    "./webhook": "./src/webhook.ts"
+  }
+}

@@ -40,6 +40,8 @@ importers:
         specifier: ^3.78.0
         version: 3.114.17(@cloudflare/workers-types@4.20260526.1)
 
+  packages/shared: {}
+
 packages:
 
   '@biomejs/biome@1.9.4':
