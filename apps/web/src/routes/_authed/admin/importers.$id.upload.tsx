@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_authed/admin/importers/$id/upload")({
 
 function UploadWizardRoute() {
   const { id } = Route.useParams();
-  const [, setContext] = useState<StepContextSubmit | null>(null);
+  const [context, setContext] = useState<StepContextSubmit | null>(null);
 
   return (
     <WizardShell activeStep={0}>
@@ -20,15 +20,14 @@ function UploadWizardRoute() {
       <StepContext
         onSubmit={(value) => {
           setContext(value);
-          // Step 1+ are out of scope for Story #2 — log the captured context
-          // so the engineer integrating Story #3 can see it survives the step.
+          // TODO(Story #3): replace this with router.navigate to the
+          // /admin/importers/$id/upload/file step once that route exists.
           console.info("[wizard] step 0 -> step 1", value);
-          // Placeholder navigation — replace with `navigate({ to: ... })` when Step 1 exists.
-          alert(
-            `Step 0 captured.\n\n${JSON.stringify(value, null, 2)}\n\n(Step 1 lives in Story #3.)`,
-          );
         }}
       />
+      {context !== null && (
+        <p className="mt-4 text-xs text-slate-500">Step 0 captured. Step 1 lands in Story #3.</p>
+      )}
     </WizardShell>
   );
 }

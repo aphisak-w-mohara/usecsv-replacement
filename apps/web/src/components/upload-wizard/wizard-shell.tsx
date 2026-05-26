@@ -16,20 +16,16 @@ const STEPS: readonly Step[] = [
 type WizardShellProps = {
   activeStep: number;
   children: ReactNode;
-  onBack?: () => void;
-  onNext?: () => void;
-  nextDisabled?: boolean;
-  nextLabel?: string;
+  /**
+   * Optional footer slot. Each step renders its own Back/Next pair (or
+   * just Next, or nothing) so it can control the disabled state from its
+   * own internal validation. WizardShell only owns the step indicator
+   * and the content wrapper.
+   */
+  footer?: ReactNode;
 };
 
-export function WizardShell({
-  activeStep,
-  children,
-  onBack,
-  onNext,
-  nextDisabled,
-  nextLabel = "Next",
-}: WizardShellProps) {
+export function WizardShell({ activeStep, children, footer }: WizardShellProps) {
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-8">
       <ol className="flex items-center gap-2" aria-label="Upload wizard steps">
@@ -60,24 +56,7 @@ export function WizardShell({
         {children}
       </main>
 
-      <footer className="flex justify-between">
-        <button
-          type="button"
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
-          onClick={onBack}
-          disabled={!onBack || activeStep === 0}
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          onClick={onNext}
-          disabled={nextDisabled || !onNext}
-        >
-          {nextLabel}
-        </button>
-      </footer>
+      {footer && <footer className="flex justify-between">{footer}</footer>}
     </div>
   );
 }
