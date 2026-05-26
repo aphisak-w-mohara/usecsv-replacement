@@ -6,7 +6,9 @@
 
 ## Context
 
-EVO (the Mohara property-management platform) currently uses [usecsv.com](https://usecsv.com) as a hosted CSV importer for **Properties** and **Tenants** data. Staff configure importers in usecsv's admin dashboard; end-users upload CSVs through usecsv's hosted UI; usecsv POSTs the parsed rows to two webhook endpoints on the EVO Laravel backend (`/webhook/property/import`, `/webhook/tenants/import`).
+EVO (the Mohara property-management platform) currently uses [usecsv.com](https://usecsv.com) as a hosted CSV importer for **Properties** and **Tenants** data. Staff configure importers in usecsv's admin dashboard; the Mohara dev team uploads CSVs (received from EVO clients) through usecsv's hosted UI; usecsv POSTs the parsed rows to two webhook endpoints on the EVO Laravel backend (`/webhook/property/import`, `/webhook/tenants/import`).
+
+**This is an internal tool.** Every uploader is a logged-in Mohara dev team member acting on behalf of a client whose CSV they have in hand. There is no anonymous public-URL flow — clients do not upload directly through evo-csv.
 
 The Laravel side is real and battle-tested. Files referenced throughout this spec:
 
@@ -24,44 +26,46 @@ The Laravel side is real and battle-tested. Files referenced throughout this spe
 
 | In scope | Out of scope |
 |---|---|
-| Hosted admin + importer UI at `app.<domain>` | JS/React SDK packages (`@evo/csv-js`, `@evo/csv-react`) |
+| Internal admin tool at `app.<domain>` (all routes auth-gated) | Anonymous / public upload URLs |
+| Configure importers + run uploads from one frontend | JS/React SDK packages (`@evo/csv-js`, `@evo/csv-react`) |
 | Webhook delivery byte-compatible with usecsv | `onData` browser-callback delivery mode |
-| Multi-tenant (projects) from day 1 | Themes, multi-language (English only) |
-| Multi-environment per project | Validation hooks (`onRecordsInitial`, `onRecordEdit`) |
+| Multi-tenant (projects) for future Mohara products | Themes, multi-language (English only) |
+| Multi-environment per project (prod/staging/uat) | Validation hooks (`onRecordsInitial`, `onRecordEdit`) |
 | Google SSO authentication | Email/password auth, magic links |
 | Optional per-importer HMAC webhook signing | Mandatory signing (existing Laravel keeps working) |
 | Property + Tenants column schemas seeded from Laravel | Other entity types (Job Requests, etc.) |
+| Per-upload context (`user`/`metadata` form) for audit trail | Client-facing self-service portal |
 
 ## Decisions log
 
 | # | Decision | Status |
 |---|---|---|
 | 1 | Stack: React + Vite 8 + Hono on Cloudflare Workers, pnpm workspace, Hono RPC | locked |
-| 2 | MVP = hosted UI only (no SDK packages) | locked |
-| 3 | Multi-tenant from day 1 | locked |
-| 4 | Authentication: Google SSO only | locked |
-| 5 | Webhook signing: optional per-importer, off by default | locked |
+| 2 | MVP = single internal frontend (admin + upload behind same auth); no SDK packages | locked |
+| 3 | Multi-tenant (projects) — kept lightweight for future Mohara products | locked |
+| 4 | Authentication: Google SSO only; every uploader is logged in | locked |
+| 5 | Webhook signing: optional per-importer-environment, off by default | locked |
 | 6 | Multi-environment per project, with two-layer permissions | locked |
 | 7 | Webhook payload byte-identical to usecsv's (incl. 1-based `batch.index`) | locked |
+| 8 | No anonymous public-URL flow; the only unauthenticated routes are `/login` and `/invites/:token` | locked |
 
 ## Architecture
 
-One Cloudflare project, one deployed Worker, two hostnames.
+One Cloudflare project, one deployed Worker, one hostname.
 
 ```
-                                          ┌──────────────────────────────────┐
-   end-user (CSV uploader)                │  Cloudflare Worker (Hono)        │
-   ┌─────────────────────┐                │                                  │
-   │  app.<domain>/i/    │  React SPA     │  • / *           static (Vite)   │
-   │  <env-importer-key> │ ──────────────▶│  • /api/*        Hono routes     │
-   │                     │  REST + JSON   │  • Bindings: D1, R2, KV, QUEUE   │
-   └─────────────────────┘                └────────┬─────────────────────────┘
-                                                   │
-   admin (EVO staff)                               │
-   ┌─────────────────────┐                         │
-   │  app.<domain>/admin │  React SPA              │  produces signed/unsigned
-   │  (Google SSO)       │ ──────────────▶ same    │  webhook POST per batch
-   └─────────────────────┘                         ▼
+   Mohara dev team member                  ┌──────────────────────────────────┐
+   ┌─────────────────────────┐             │  Cloudflare Worker (Hono)        │
+   │  app.<domain>/admin/... │  React SPA  │                                  │
+   │  (Google SSO required)  │ ──────────▶ │  • / *           static (Vite)   │
+   │  • configure importers  │  REST + JSON│  • /api/*        Hono routes     │
+   │  • run CSV uploads      │             │  • All routes auth-gated         │
+   │  • view import history  │             │  • Bindings: D1, R2, KV, QUEUE   │
+   └─────────────────────────┘             └────────┬─────────────────────────┘
+                                                    │
+                                                    │  produces signed/unsigned
+                                                    │  webhook POST per batch
+                                                    ▼
                                           ┌──────────────────────────────────┐
                                           │  CF Queue → worker consumer →    │
                                           │  POST batch → customer webhook   │
@@ -72,18 +76,20 @@ One Cloudflare project, one deployed Worker, two hostnames.
                                           └──────────────────────────────────┘
 ```
 
-**Why one Worker, not three:** for MVP, splitting admin/importer/api into separate workers buys nothing — same auth, same bindings, same DB. We can split later if we add the SDK and want a different CSP origin for the importer iframe.
+**Why one Worker, not three:** for MVP, splitting admin/api into separate workers buys nothing — same auth, same bindings, same DB.
 
-**Why no Durable Objects:** since uploads are POSTed in chunks straight to the API (no SDK iframe holding session state), upload state lives in D1 + R2 the whole way. The batch dispatcher runs as a Queue consumer, not a stateful DO. We re-add DOs only if real-time per-row progress becomes important.
+**Why no Durable Objects:** uploads are POSTed in chunks straight to the API; upload state lives in D1 + R2 the whole way. The batch dispatcher runs as a Queue consumer, not a stateful DO. We re-add DOs only if real-time per-row progress becomes important.
+
+**No public/anonymous surface:** every Hono route requires a session. There is no `/i/<key>` public flow. Importer keys still exist on each (importer × environment) row but they're internal identifiers + the value placed in the `importerId` webhook field for backward compatibility — they are not URL caps.
 
 **End-to-end flow of one import:**
 
-1. Admin logs into `app.<domain>/admin` via Google SSO → picks active Project + Environment.
-2. Admin creates importer "Tenants" with column schema + per-env webhook URL → API stores in D1 → returns `key=<uuid>` for the (importer × env) pair.
-3. EVO staff send end-user the link `https://app.<domain>/i/<key>?user={...}&metadata={...}`.
-4. End-user picks file → SPA parses CSV/XLSX client-side (PapaParse + SheetJS) → fuzzy-suggests column map → user confirms/edits → user previews errors in a virtualized grid → submits.
-5. SPA `POST /api/public/uploads` to create upload → `POST /api/public/uploads/:id/batches/:idx` for each chunk of 1000 rows. API stores rows in R2 (`uploads/<id>/batches/<idx>.json`) and queues a webhook dispatch job per batch.
-6. Queue consumer drains jobs **in batch.index order**: POSTs the canonical payload to the importer-environment's webhook URL, signs if enabled, captures the 200-with-errors response, writes a `webhook_attempts` row. End-user UI polls `/api/public/uploads/:id` for status.
+1. Dev team member logs into `app.<domain>/admin` via Google SSO → picks active Project + Environment.
+2. (One-time per importer) An admin creates importer "Tenants" with column schema + per-env webhook URL → API stores in D1 → returns `key=<uuid>` for the (importer × env) pair.
+3. To run an upload: dev team member opens `/admin/importers/:id/upload`. Step 0 is an optional **upload context form** (`user` and `metadata` JSON, ticket reference, free-text note). Step 1–4 is the wizard: Upload File → Match Columns → Review & Edit → Submit.
+4. SPA parses CSV/XLSX client-side (PapaParse + SheetJS), fuzzy-suggests column map, surfaces validation errors in a virtualized grid for inline editing, then submits.
+5. SPA `POST /api/uploads` to create upload → `POST /api/uploads/:id/batches/:idx` for each chunk of 1000 rows. API stores rows in R2 (`uploads/<id>/batches/<idx>.json`) and queues a webhook dispatch job per batch.
+6. Queue consumer drains jobs **in batch.index order**: POSTs the canonical payload to the importer-environment's webhook URL, signs if enabled, captures the 200-with-errors response, writes a `webhook_attempts` row. Admin UI polls `/api/uploads/:id` for status.
 
 ## Data model
 
@@ -234,13 +240,14 @@ Capability matrix:
 | Capability | viewer | member | admin | owner |
 |---|:-:|:-:|:-:|:-:|
 | See importer list + history in env | ✅ | ✅ | ✅ | ✅ |
-| Open admin retry button on a failed upload | — | ✅ | ✅ | ✅ |
+| **Run a CSV upload in env** | — | ✅ | ✅ | ✅ |
+| Retry a failed batch | — | ✅ | ✅ | ✅ |
 | Edit importer settings / columns | — | — | ✅ | ✅ |
 | Rotate webhook secret | — | — | ✅ | ✅ |
 | Create/delete environments | — | — | — | ✅ |
 | Invite members, assign project roles | — | — | — | ✅ |
 
-Public importer URLs (`/i/<key>`) are always accessible — possession of the key is the cap. End-users never see auth.
+Every action requires an authenticated session. There is no anonymous surface — possession of an importer key is **not** a capability; the dev team member must have an authenticated session with the `member` role (or higher) in the target environment to upload.
 
 ### R2 layout
 
@@ -343,7 +350,7 @@ For each importer EVO currently has on usecsv.com:
 
 1. In our admin, create the corresponding importer + columns (use `tools/seed-evo-importers.ts` for "Tenants" and "Properties").
 2. For each environment (production / staging / uat), set the same webhook URL EVO already configured in usecsv.
-3. Distribute the new per-env public URLs to staff. Decommission the usecsv.com side.
+3. Invite the dev team via Google SSO; assign `environment_grants` so each member has the right access per env (e.g., junior devs limited to staging+uat). Decommission the usecsv.com side.
 
 **No Laravel code change required for MVP.** When/if EVO enables signing per importer-environment, ship a one-PR addition to `evo-laravel-server` adding the verification middleware.
 
@@ -391,19 +398,22 @@ If external (non-Google) users ever need access, we add magic-link via Cloudflar
 
 ## UI surfaces
 
-### Admin (`app.<domain>/admin/...`)
+### Admin app (`app.<domain>/admin/...`)
+
+Every route requires a session. The only unauthenticated route in the whole app is `/login`.
 
 ```
-/admin/login                                 Google SSO button
+/login                                       Google SSO button
+/invites/:token                              accept invite → triggers SSO
 /admin/                                      importer list (filtered by selected env)
 /admin/environments                          env CRUD (owner-only)
 /admin/importers/new                         create importer (column schema)
 /admin/importers/:id                         detail page w/ tabs (see below)
+/admin/importers/:id/upload                  5-step wizard to run an upload
 /admin/importers/:id/imports/:uploadId       upload detail + retry + errors
 /admin/api-keys                              per-importer-env secrets + rotate
 /admin/settings                              project name, allowed_email_domain, members, env_grants
 /admin/profile                               user email + linked Google account
-/invites/:token                              accept invite → triggers SSO
 ```
 
 Top nav: `[Project: EVO ▾] [Environment: production ▾]` switchers + user avatar.
@@ -417,47 +427,50 @@ Top nav: `[Project: EVO ▾] [Environment: production ▾]` switchers + user ava
 │ General  — name, archived                                      │
 │ Columns  — shared schema (drag-reorder, add/edit dialog)       │
 │ <Env>    — webhook URL, signing toggle + secret, batch_size,   │
-│             filter_invalid, include_unmatched, public key URL, │
-│             imports history (filename, status, created, resp)  │
+│             filter_invalid, include_unmatched, internal key,   │
+│             "Run upload" button, imports history (filename,    │
+│             status, created, response)                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Public importer flow (`app.<domain>/i/<key>`)
+### Upload wizard (`/admin/importers/:id/upload`)
 
-Standalone full-page React route. Four steps matching usecsv:
+Authenticated route. Five steps:
 
-1. **Getting Started** — header, optional welcome text, columns table.
-2. **Upload File** — drag-drop or browse. Accepts `.csv` / `.xlsx` / `.xls` / `.tsv`. Parsed client-side with PapaParse + SheetJS. Default encoding UTF-8.
-3. **Match Columns** — fuzzy auto-suggest (Levenshtein on lowercased names); user adjusts dropdowns; validates all required columns are matched before "Next".
-4. **Review & Import** — virtualized grid (TanStack Table) showing parsed rows with per-cell validation status. Errors red, warnings yellow. Filter to "errors only". Inline cell edits re-validate live.
-5. **Progress / Done** — live progress bar via polling `/api/public/uploads/:id`. When complete: success summary + per-row errors echoed from Laravel + downloadable error CSV.
+0. **Upload context** (optional) — small form: target environment (defaults to selected env from nav), free-text note, ticket reference, and any extra `user` / `metadata` JSON the dev team wants attached to the webhook payload. `user.userId` auto-fills with the logged-in dev team member's email so Laravel side has audit context.
+1. **Upload File** — drag-drop or browse. Accepts `.csv` / `.xlsx` / `.xls` / `.tsv`. Parsed client-side with PapaParse + SheetJS. Default encoding UTF-8.
+2. **Match Columns** — fuzzy auto-suggest (Levenshtein on lowercased names); user adjusts dropdowns; validates all required columns are matched before "Next".
+3. **Review & Edit** — virtualized grid (TanStack Table) showing parsed rows with per-cell validation status. Errors red, warnings yellow. Filter to "errors only". Inline cell edits re-validate live.
+4. **Submit & Progress** — live progress bar via polling `/api/uploads/:id`. When complete: success summary + per-row errors echoed from Laravel + downloadable error CSV.
 
-Client-side parsing means **the source file never leaves the browser unless validation passes** — small privacy win.
+Client-side parsing means **the source file never leaves the browser unless validation passes** — small privacy win, also matters because client CSVs may contain PII.
 
 ### Hono RPC layout
 
 ```ts
 // apps/worker/src/index.ts
 const app = new Hono<{ Bindings: Env }>()
-  .route('/api/auth',         authRoutes)         // google sso
-  .route('/api/projects',     projectRoutes)      // CRUD + members
+  .route('/api/auth',         authRoutes)         // google sso (login, callback, logout)
+  .use('/api/*', requireSession)                  // everything below is auth-gated
+  .route('/api/me',           meRoutes)           // session info, project switcher data
+  .route('/api/projects',     projectRoutes)      // CRUD + members + invites
   .route('/api/environments', environmentRoutes)  // env CRUD (owner)
   .route('/api/importers',    importerRoutes)     // CRUD + columns
-  .route('/api/uploads',      uploadAdminRoutes)  // admin: list, get, retry
-  .route('/api/public',       publicRoutes);      // /importer/:key, /uploads/*
+  .route('/api/uploads',      uploadRoutes);      // init, batch ingest, status, retry
 
 export type AppType = typeof app;
 ```
 
-`apps/web/` imports `AppType` via `import type` and creates the typed client with `hc<AppType>(window.location.origin)`. Public routes skip auth; admin routes use `requireSession` + `withProject` + `withEnvironment` middlewares that compute effective role server-side.
+`apps/web/` imports `AppType` via `import type` and creates the typed client with `hc<AppType>(window.location.origin)`. Only `/api/auth/*` is exempt from `requireSession`. Downstream routes additionally use `withProject` + `withEnvironment` middlewares that compute effective role server-side.
 
 ### Multi-tenancy & environment enforcement
 
-A `withProject` middleware sits on every admin route:
+Every route under `/api/*` (except `/api/auth/*`) requires a session. On top of that:
 
-1. Read session cookie → KV → `{ user_id, project_id, environment_id, role }`
-2. Attach to context
-3. Every D1 query goes through a thin repo layer that **forces project_id (and env_id where applicable) into WHERE**. The repo never accepts these IDs from request body — only from context.
+1. `requireSession` middleware: reads session cookie → KV → `{ user_id, project_id, environment_id }` → 401 if missing.
+2. `withProject` middleware: validates the active project, attaches `effective_role` to context.
+3. `withEnvironment` middleware (where relevant): does the same for the selected environment.
+4. Every D1 query goes through a thin repo layer that **forces project_id (and env_id where applicable) into WHERE**. The repo never accepts these IDs from request body — only from context.
 
 IDOR attempts (forging `project_id` in body/query) return 404, not 403 — 403 leaks existence.
 
@@ -479,17 +492,16 @@ evo-usecsv/
 │   │   │   ├── index.ts           # Hono app composition + export type AppType
 │   │   │   ├── env.ts             # CF bindings type (D1, R2, KV, QUEUE)
 │   │   │   ├── middleware/
-│   │   │   │   ├── session.ts     # cookie → KV → c.set('user')
+│   │   │   │   ├── require-session.ts  # 401 if no session
 │   │   │   │   ├── with-project.ts
-│   │   │   │   ├── with-environment.ts
-│   │   │   │   └── resolve-importer-env.ts   # /api/public/*: key → config
+│   │   │   │   └── with-environment.ts
 │   │   │   ├── routes/
 │   │   │   │   ├── auth.ts        # google sso login/callback/logout
+│   │   │   │   ├── me.ts          # session info, project switcher data
 │   │   │   │   ├── projects.ts    # CRUD + members + invites + allowed_domain
 │   │   │   │   ├── environments.ts
 │   │   │   │   ├── importers.ts   # CRUD + columns + per-env config tabs
-│   │   │   │   ├── uploads.ts     # admin: list, get, retry
-│   │   │   │   └── public.ts      # /api/public/importer/:key, /uploads/*
+│   │   │   │   └── uploads.ts     # init, batch ingest, status, retry
 │   │   │   ├── db/
 │   │   │   │   ├── schema.ts      # Drizzle schema
 │   │   │   │   └── repos/         # all queries; every fn takes ids from ctx
@@ -506,24 +518,25 @@ evo-usecsv/
 │       │   ├── main.tsx
 │       │   ├── routes/            # TanStack Router (file-based, typed)
 │       │   │   ├── __root.tsx
-│       │   │   ├── _admin/        # session-gated layout
-│       │   │   │   ├── index.tsx
-│       │   │   │   ├── environments.tsx
-│       │   │   │   ├── importers.$id.tsx
-│       │   │   │   ├── importers.$id.imports.$uploadId.tsx
-│       │   │   │   ├── api-keys.tsx
-│       │   │   │   ├── settings.tsx
-│       │   │   │   └── profile.tsx
-│       │   │   ├── login.tsx
-│       │   │   ├── invites.$token.tsx
-│       │   │   └── i.$key.tsx     # public 4-step importer flow
+│       │   │   ├── login.tsx                          # unauthed
+│       │   │   ├── invites.$token.tsx                 # unauthed; triggers SSO
+│       │   │   └── _authed/                           # session-gated layout
+│       │   │       └── admin/
+│       │   │           ├── index.tsx                  # importer list
+│       │   │           ├── environments.tsx
+│       │   │           ├── importers.$id.tsx          # detail + tabs
+│       │   │           ├── importers.$id.upload.tsx   # 5-step wizard
+│       │   │           ├── importers.$id.imports.$uploadId.tsx
+│       │   │           ├── api-keys.tsx
+│       │   │           ├── settings.tsx
+│       │   │           └── profile.tsx
 │       │   ├── lib/
 │       │   │   ├── api.ts         # hc<AppType>(window.location.origin)
 │       │   │   ├── csv-parse.ts   # PapaParse + SheetJS wrapper
 │       │   │   └── fuzzy.ts       # column auto-suggest
 │       │   ├── components/
-│       │   │   ├── importer-flow/{step-*.tsx}
-│       │   │   └── admin/{importer-form,column-dialog,...}.tsx
+│       │   │   ├── upload-wizard/{step-context,step-upload,step-match,step-review,step-progress}.tsx
+│       │   │   └── admin/{importer-form,column-dialog,env-tab,members-table,...}.tsx
 │       │   └── styles/globals.css                # Tailwind v4
 │       ├── index.html
 │       ├── vite.config.ts                        # builds to ../worker/static-assets
@@ -568,7 +581,7 @@ evo-usecsv/
 | **2. Drizzle migrations apply cleanly** | schema + indexes valid on fresh D1 | `pnpm db:migrate` against a throwaway D1 created with `wrangler d1 create`. |
 | **3. Local E2E against real Laravel** | full happy path lands rows in Laravel | `pnpm dev:full` boots `wrangler dev` + a `cloudflared tunnel` exposing the local Laravel server. Manually drive: create importer → set webhook URL to tunnel → upload sample CSV → confirm tenant row in Laravel DB. |
 | **4. Retry / halt unit tests** | queue consumer behaves on 5xx, timeout, partial errors | Vitest with stubbed fetch; assert `webhook_attempts` rows + final `upload.status`. |
-| **5. Multi-tenant isolation** | no IDOR via id substitution | Repo-layer test: every CRUD route with forged `project_id` / `environment_id` must return 404. |
+| **5. Multi-tenant isolation** | no IDOR via id substitution | Repo-layer test: every CRUD route with forged `project_id` / `environment_id` in body/query must return 404; missing-session must return 401. |
 | **6. Permission matrix** | env_grants computed correctly | Unit tests for `effective_role()` covering each cell in the capability matrix. |
 | **7. Google SSO callback** | new user / existing user / domain-restricted / pending-invite branches | Vitest with mocked `@hono/oauth-providers`. |
 
@@ -586,7 +599,9 @@ GitHub Actions CI/CD is post-MVP.
 
 ## Explicit non-goals for MVP
 
-- JS/React SDK packages (deferred — hosted UI only)
+- Anonymous / public upload URLs (every uploader is authenticated)
+- JS/React SDK packages (deferred — internal tool only)
+- Client-facing self-service portal
 - Languages other than English
 - Themes / branding customization
 - Magic-link / email-password auth (Google SSO only)
