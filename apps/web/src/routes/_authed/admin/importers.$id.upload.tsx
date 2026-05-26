@@ -79,9 +79,18 @@ function UploadWizardRoute() {
 
   function handleReviewed(editedRows: Record<string, string>[]) {
     setState((s) => {
-      // TODO(Story #7): replace this with the actual submit + batch dispatch
-      // using s.context + s.parsed + s.matched + editedRows (the user-fixed
-      // rows). Story #7 will POST /api/uploads then chunk the rows.
+      // TODO(Story #7): replace this with the actual submit + batch dispatch.
+      // Story #7 will:
+      //   1. Invert s.matched (currently { machine_name: file_header }) and use
+      //      it to remap each editedRow's keys from file-header to machine-name.
+      //      This is REQUIRED — the webhook payload's rows[] must be keyed by
+      //      machine name (e.g. "first_name"), not file header (e.g. "First name").
+      //      See captured-payloads/2026-05-26-usecsv-live-webhook.json for the
+      //      exact expected shape.
+      //   2. Optionally re-run validateCell on each row if filterInvalidRows is on.
+      //   3. POST /api/uploads with the upload metadata.
+      //   4. Chunk editedRows into batches, POST /api/uploads/:id/batches/:idx
+      //      for each.
       console.info("[wizard] step 3 -> step 4 (Story #7)", {
         context: s.context,
         parsed: s.parsed,

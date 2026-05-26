@@ -14,26 +14,31 @@ export function EditableCell({ value, validation, onCommit }: EditableCellProps)
   const [draft, setDraft] = useState(value);
   const [tooLarge, setTooLarge] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const committedRef = useRef(false);
 
   useEffect(() => {
     if (editing) {
+      committedRef.current = false;
       inputRef.current?.focus();
       inputRef.current?.select();
     }
   }, [editing]);
 
   function tryCommit() {
+    if (committedRef.current) return; // already committed once this edit session
     const byteLen = new TextEncoder().encode(draft).byteLength;
     if (byteLen > MAX_CELL_BYTES) {
       setTooLarge(true);
       return;
     }
+    committedRef.current = true;
     setTooLarge(false);
     onCommit(draft);
     setEditing(false);
   }
 
   function cancel() {
+    committedRef.current = true;
     setDraft(value);
     setTooLarge(false);
     setEditing(false);

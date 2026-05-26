@@ -29,6 +29,7 @@ describe("EditableCell", () => {
     fireEvent.change(input, { target: { value: "new" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCommit).toHaveBeenCalledWith("new");
+    expect(onCommit).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
@@ -40,6 +41,7 @@ describe("EditableCell", () => {
     fireEvent.change(input, { target: { value: "new" } });
     fireEvent.keyDown(input, { key: "Tab" });
     expect(onCommit).toHaveBeenCalledWith("new");
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
   it("cancels on Escape and does NOT call onCommit", () => {

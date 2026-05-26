@@ -104,10 +104,13 @@ export function StepReviewGrid({
       return next;
     });
 
-    const oldResult = cache.get(rowIdx)?.get(columnName);
     const newResult = validateCell(newValue, column);
 
     setValidation((prev) => {
+      // Read oldResult from the prev state, not the closure — protects against
+      // stale reads if React ever batches multiple _commitCellEdit calls in one event.
+      const oldResult = prev.cache.get(rowIdx)?.get(columnName);
+
       const nextCache: ValidationCache = new Map(prev.cache);
       const nextCellCache = new Map(nextCache.get(rowIdx) ?? new Map());
       nextCellCache.set(columnName, newResult);
@@ -213,8 +216,8 @@ export function StepReviewGrid({
       <header>
         <h2 className="text-lg font-semibold text-slate-900">Review &amp; submit</h2>
         <p className="text-sm text-slate-600">
-          Each mapped cell has been validated against your importer schema. Errors are highlighted
-          in red — you'll be able to edit cells inline in the next step.
+          Each mapped cell has been validated against your importer schema. Click any cell to edit
+          it inline — errors update in real time.
         </p>
       </header>
 
