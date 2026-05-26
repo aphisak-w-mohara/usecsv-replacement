@@ -3,6 +3,7 @@ import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tan
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ImporterColumn } from "../../lib/fuzzy-match";
 import { validateCell, type CellValidationResult } from "../../lib/validators";
+import { EditableCell } from "./editable-cell";
 
 const VIRTUALIZE_THRESHOLD = 50;
 
@@ -145,9 +146,6 @@ export function StepReviewGrid({
       };
     });
   }
-  // Silence unused-var warning in Task 1 — the wire-up happens in Task 2.
-  void _commitCellEdit;
-
   const [showOnlyErrors, setShowOnlyErrors] = useState(false);
 
   const tableRows: RowWithMeta[] = [];
@@ -181,22 +179,12 @@ export function StepReviewGrid({
         const rowIdx = info.row.original.__rowIndex - 1;
         const result = cache.get(rowIdx)?.get(col.name);
         const value = info.getValue() as string;
-        const isError = result && !result.ok && result.severity === "error";
-        const isWarn = result && !result.ok && result.severity === "warning";
         return (
-          <span
-            title={result && !result.ok ? result.message : undefined}
-            className={
-              isError
-                ? "block bg-red-50 px-2 text-red-900"
-                : isWarn
-                  ? "block bg-yellow-50 px-2 text-yellow-900"
-                  : "block px-2"
-            }
-          >
-            {isError ? "⚠ " : ""}
-            {value}
-          </span>
+          <EditableCell
+            value={value}
+            validation={result}
+            onCommit={(newValue) => _commitCellEdit(rowIdx, col.name, newValue)}
+          />
         );
       },
     });

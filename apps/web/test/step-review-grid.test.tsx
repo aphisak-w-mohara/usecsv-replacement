@@ -126,4 +126,76 @@ describe("StepReviewGrid", () => {
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
     expect(onConfirmed).toHaveBeenCalledTimes(1);
   });
+
+  it("re-validates only the edited cell on commit and updates the summary", () => {
+    const ONE_BAD_EMAIL_ROW = [
+      { "First name": "Alice", "Last name": "Smith", "Customer Email": "alice@example.com" },
+      { "First name": "Bob", "Last name": "Jones", "Customer Email": "not-an-email" },
+      { "First name": "Carol", "Last name": "Lee", "Customer Email": "carol@example.com" },
+    ];
+    renderGrid({ rows: ONE_BAD_EMAIL_ROW });
+
+    // Initially 1 error
+    expect(screen.getByText(/1 error/i)).toBeInTheDocument();
+
+    // Click the bad cell, type a valid email, commit
+    fireEvent.click(screen.getByTitle(/not a valid email/i));
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "bob.fixed@example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Summary now shows 0 errors
+    expect(screen.getByText(/0 errors/i)).toBeInTheDocument();
+    // The new value is visible
+    expect(screen.getByText("bob.fixed@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("not-an-email")).not.toBeInTheDocument();
+  });
+
+  it("removes a row from 'show only errors' view after its error is fixed", () => {
+    const ONE_BAD_EMAIL_ROW = [
+      { "First name": "Alice", "Last name": "Smith", "Customer Email": "alice@example.com" },
+      { "First name": "Bob", "Last name": "Jones", "Customer Email": "not-an-email" },
+      { "First name": "Carol", "Last name": "Lee", "Customer Email": "carol@example.com" },
+    ];
+    renderGrid({ rows: ONE_BAD_EMAIL_ROW });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /show only errors/i }));
+    expect(screen.getByText("2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle(/not a valid email/i));
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "bob.fixed@example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.queryByText("2")).not.toBeInTheDocument();
+    expect(screen.getByText(/no errors/i)).toBeInTheDocument();
+  });
+
+  it("preserves the original value when the user presses Escape", () => {
+    renderGrid();
+    fireEvent.click(screen.getByText("Alice"));
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "EDITED" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.queryByText("EDITED")).not.toBeInTheDocument();
+  });
+
+  it("passes the edited rows to onConfirmed (not the originals)", () => {
+    const onConfirmed = vi.fn();
+    renderGrid({ onConfirmed });
+
+    fireEvent.click(screen.getByText("Alice"));
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "Alicia" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
+
+    expect(onConfirmed).toHaveBeenCalledTimes(1);
+    const editedRows = onConfirmed.mock.calls[0]?.[0] as Record<string, string>[];
+    expect(editedRows).toHaveLength(3);
+    expect(editedRows[0]?.["First name"]).toBe("Alicia");
+    expect(editedRows[1]?.["First name"]).toBe("Bob");
+  });
 });
