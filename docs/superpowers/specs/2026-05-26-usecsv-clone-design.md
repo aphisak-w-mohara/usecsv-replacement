@@ -48,6 +48,7 @@ The Laravel side is real and battle-tested. Files referenced throughout this spe
 | 6 | Multi-environment per project, with two-layer permissions | locked |
 | 7 | Webhook payload byte-identical to usecsv's (incl. 1-based `batch.index`) | locked |
 | 8 | No anonymous public-URL flow; the only unauthenticated routes are `/login` and `/invites/:token` | locked |
+| 9 | Closed SSO signup: callback rejects unknown emails (no auto-account-creation). First owner seeded by one-shot CLI bootstrap | locked |
 
 ## Architecture
 
@@ -373,20 +374,52 @@ If external (non-Google) users ever need access, we add magic-link via Cloudflar
 
 ### Sign-in flow
 
+SSO sign-in is **closed by default** — only pre-existing members or holders of a pending invite can complete the dance. There is no "anyone with a Google account can sign up" surface.
+
 ```
-1. User visits /admin → no session → redirect to /admin/login
-2. /admin/login renders "Continue with Google"
+1. User visits /admin → no session → redirect to /login
+2. /login renders "Continue with Google"
 3. → /api/auth/google/login → OAuth state, redirect to Google
    (scope: openid email profile; optional &hd=<allowed_email_domain>)
 4. Google → /api/auth/google/callback?code=...
 5. Exchange code → fetch profile (sub, email, name, picture)
 6. Match logic:
-   ├─ google_sub match     → create session
-   ├─ email match (no sub) → bind sub → create session   (handles pending invites)
-   ├─ pending invite       → create user, materialize membership → session
-   └─ no match, no invite  → create user → onboarding (create first project)
+   ├─ google_sub match       → create session
+   ├─ email match (no sub)   → bind sub → create session
+   │                            (handles bootstrapped users + pending invites)
+   ├─ pending invite by email → create user, bind sub, materialize membership → session
+   └─ otherwise              → 403 "Not authorized. Ask a project owner for an invite."
+                                Do NOT create a users row.
 7. Redirect to original /admin URL
 ```
+
+### Bootstrap: how the first owner is created
+
+The first user (and any disaster-recovery additions of new owners) is seeded by a one-shot CLI command, not by signing in. This keeps the SSO callback closed.
+
+```bash
+pnpm bootstrap \
+  --email aphisak@mohara.co \
+  --name "Aphisak Naksomboon" \
+  --project-name "EVO" \
+  --project-slug "evo" \
+  --allowed-domain "mohara.co"
+```
+
+Implemented in `tools/bootstrap.ts` as a thin wrapper around `wrangler d1 execute`. In one transaction it:
+
+1. Inserts a `projects` row with `slug`, `name`, `allowed_email_domain`.
+2. Inserts a `users` row with `email`, `name`, and `google_sub = NULL` (filled in on first SSO match).
+3. Inserts a `memberships` row with `role = 'owner'`.
+4. Inserts a default `environments` row (`slug='production'`, `is_default=1`).
+
+The human then signs in via Google SSO; the callback finds the pre-seeded user by email, binds `google_sub`, and they land in the project as owner.
+
+**Why CLI not env var or first-user-wins:**
+
+- **First-user-wins** has a race condition (anyone who finds the URL first becomes owner).
+- **`BOOTSTRAP_OWNER_EMAIL` Wrangler secret** is a landmine — anyone matching that email forever auto-promotes to owner if the secret isn't rotated.
+- **CLI seed** is one-shot, auditable, leaves no runtime auto-grant surface. Disaster recovery (adding a second owner if access is lost) is just `pnpm bootstrap --email <new>@mohara.co --project-slug evo`.
 
 ### Per-project domain restriction
 
@@ -550,6 +583,7 @@ evo-usecsv/
 │       └── package.json
 │
 └── tools/
+    ├── bootstrap.ts               # seed first owner + project + default env
     ├── seed-evo-importers.ts      # create "Tenants" + "Properties" importers
     │                                with column schemas mirroring Laravel imports
     └── webhook-shape.snapshot.test.ts  # locks payload format
@@ -583,7 +617,8 @@ evo-usecsv/
 | **4. Retry / halt unit tests** | queue consumer behaves on 5xx, timeout, partial errors | Vitest with stubbed fetch; assert `webhook_attempts` rows + final `upload.status`. |
 | **5. Multi-tenant isolation** | no IDOR via id substitution | Repo-layer test: every CRUD route with forged `project_id` / `environment_id` in body/query must return 404; missing-session must return 401. |
 | **6. Permission matrix** | env_grants computed correctly | Unit tests for `effective_role()` covering each cell in the capability matrix. |
-| **7. Google SSO callback** | new user / existing user / domain-restricted / pending-invite branches | Vitest with mocked `@hono/oauth-providers`. |
+| **7. Google SSO callback** | match / invite / domain-restricted / unauthorized branches | Vitest with mocked `@hono/oauth-providers`; verify the "no match, no invite" branch returns 403 and creates no users row. |
+| **8. Bootstrap CLI** | seeds a project + owner + default env idempotently | Run against a throwaway D1: `pnpm bootstrap --email test@example.com --project-slug demo` → assert rows exist; second run with same slug exits 0 without duplicating. |
 
 ## Deploy pipeline (MVP)
 
