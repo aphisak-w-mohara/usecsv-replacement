@@ -9,4 +9,4 @@ DEV_USER_EMAIL = "aphisak@mohara.co"
 [[d1_databases]]
 binding = "DB"
 database_name = "evo-csv-dev"
-database_id = "REPLACE_ME_AFTER_wrangler_d1_create"
+database_id = "21b06102-dd71-4e58-a8ce-19118a48d472"
