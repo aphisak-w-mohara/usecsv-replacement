@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  suggestColumnMappings,
-  type ImporterColumn,
-} from "../src/lib/fuzzy-match";
+import { suggestColumnMappings, type ImporterColumn } from "../src/lib/fuzzy-match";
 
 const TENANT_COLUMNS: ImporterColumn[] = [
   {
@@ -52,10 +49,7 @@ describe("suggestColumnMappings", () => {
   });
 
   it("maps when the file headers exactly match a machine name", () => {
-    const result = suggestColumnMappings(
-      ["first_name", "last_name", "email"],
-      TENANT_COLUMNS,
-    );
+    const result = suggestColumnMappings(["first_name", "last_name", "email"], TENANT_COLUMNS);
     expect(result["first_name"]).toBe("first_name");
     expect(result["email"]).toBe("email");
   });
@@ -71,20 +65,14 @@ describe("suggestColumnMappings", () => {
   });
 
   it("returns __ignore__ for headers with no plausible match", () => {
-    const result = suggestColumnMappings(
-      ["First name", "Phone", "Notes"],
-      TENANT_COLUMNS,
-    );
+    const result = suggestColumnMappings(["First name", "Phone", "Notes"], TENANT_COLUMNS);
     expect(result["First name"]).toBe("first_name");
     expect(result["Phone"]).toBe("__ignore__");
     expect(result["Notes"]).toBe("__ignore__");
   });
 
   it("does NOT assign the same importer column to two different file headers", () => {
-    const result = suggestColumnMappings(
-      ["First name", "firstname"],
-      TENANT_COLUMNS,
-    );
+    const result = suggestColumnMappings(["First name", "firstname"], TENANT_COLUMNS);
     const claims = Object.values(result).filter((v) => v === "first_name");
     expect(claims).toHaveLength(1);
     expect(Object.values(result).filter((v) => v === "__ignore__")).toHaveLength(1);

@@ -7,6 +7,7 @@ import {
 import { StepMatchColumns } from "../../../components/upload-wizard/step-match-columns";
 import { StepUploadFile } from "../../../components/upload-wizard/step-upload-file";
 import { WizardShell } from "../../../components/upload-wizard/wizard-shell";
+import { api } from "../../../lib/api";
 import type { ImporterColumn } from "../../../lib/fuzzy-match";
 import type { ParseSuccess } from "../../../lib/parse-file";
 
@@ -35,17 +36,21 @@ function UploadWizardRoute() {
   useEffect(() => {
     let cancelled = false;
     setColumnsError(null);
-    fetch(`/api/importers/${id}/columns`)
-      .then((res) => {
+
+    async function load() {
+      try {
+        const res = await api.api.importers[":importer_id"].columns.$get({
+          param: { importer_id: id },
+        });
         if (!res.ok) throw new Error(`Failed to fetch columns: ${res.status}`);
-        return res.json() as Promise<{ columns: ImporterColumn[] }>;
-      })
-      .then((data) => {
-        if (!cancelled) setImporterColumns(data.columns);
-      })
-      .catch((err) => {
+        const data = await res.json();
+        if (!cancelled) setImporterColumns(data.columns as ImporterColumn[]);
+      } catch (err) {
         if (!cancelled) setColumnsError(err instanceof Error ? err.message : "Unknown error");
-      });
+      }
+    }
+
+    void load();
     return () => {
       cancelled = true;
     };

@@ -71,14 +71,21 @@ function renderStep(overrides: Partial<Parameters<typeof StepMatchColumns>[0]> =
 describe("StepMatchColumns", () => {
   it("auto-suggests matches and shows 'All required columns matched'", () => {
     renderStep();
-    expect(screen.getByText(/all required columns matched/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 3 required matched/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^next$/i })).toBeEnabled();
   });
 
   it("shows missing required when one of the required columns is unmatched", () => {
-    renderStep({ fileHeaders: ["First name", "Last name", "Notes"] });
-    expect(screen.getByText(/missing required.*customer email/i)).toBeInTheDocument();
+    const { container } = renderStep({ fileHeaders: ["First name", "Last name", "Notes"] });
+    expect(container.textContent).toMatch(/missing:.*customer email/i);
     expect(screen.getByRole("button", { name: /^next$/i })).toBeDisabled();
+  });
+
+  it("shows counts of matched required and ignored in the banner", () => {
+    const { container } = renderStep();
+    // The auto-suggestion matches all 3 required cols, ignores "Notes"
+    expect(screen.getByText(/3 of 3 required matched/i)).toBeInTheDocument();
+    expect(container.textContent).toMatch(/1 ignored/i);
   });
 
   it("calls onMatched with the inverted map { machine_name: file_header } when Next is clicked", () => {

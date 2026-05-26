@@ -53,6 +53,8 @@ export function StepMatchColumns({
   const matchedColumnNames = new Set(Object.values(mapping).filter((v) => v !== IGNORE));
   const missingRequired = requiredColumns.filter((c) => !matchedColumnNames.has(c.name));
   const allRequiredMatched = missingRequired.length === 0;
+  const ignoredCount = Object.values(mapping).filter((v) => v === IGNORE).length;
+  const matchedRequiredCount = requiredColumns.length - missingRequired.length;
 
   function handleNext() {
     if (!allRequiredMatched) return;
@@ -79,15 +81,26 @@ export function StepMatchColumns({
         </p>
       </header>
 
-      {allRequiredMatched ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          ✓ All required columns matched
-        </div>
-      ) : (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Missing required: {missingRequired.map((c) => c.display_name).join(", ")}
-        </div>
-      )}
+      <div
+        className={
+          allRequiredMatched
+            ? "rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+            : "rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        }
+      >
+        {allRequiredMatched ? "✓" : "⚠"}{" "}
+        <strong>
+          {matchedRequiredCount} of {requiredColumns.length} required matched
+        </strong>
+        {" · "}
+        {ignoredCount} ignored
+        {!allRequiredMatched && (
+          <>
+            {" · Missing: "}
+            {missingRequired.map((c) => c.display_name).join(", ")}
+          </>
+        )}
+      </div>
 
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <table className="min-w-full text-xs">
