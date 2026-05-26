@@ -7,7 +7,8 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @evo-csv/web dev",
+    "dev": "pnpm -r --parallel --filter \"@evo-csv/*\" dev",
+    "dev:web": "pnpm --filter @evo-csv/web dev",
     "dev:worker": "pnpm --filter @evo-csv/worker dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
