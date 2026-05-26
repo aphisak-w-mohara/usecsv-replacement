@@ -4,13 +4,17 @@ import { EditableCell } from "../src/components/upload-wizard/editable-cell";
 
 describe("EditableCell", () => {
   it("renders the value as plain text initially (idle mode)", () => {
-    render(<EditableCell value="alice@example.com" validation={{ ok: true }} onCommit={() => {}} />);
+    render(
+      <EditableCell value="alice@example.com" validation={{ ok: true }} onCommit={() => {}} />,
+    );
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("enters edit mode on click and pre-fills the input with the current value", () => {
-    render(<EditableCell value="alice@example.com" validation={{ ok: true }} onCommit={() => {}} />);
+    render(
+      <EditableCell value="alice@example.com" validation={{ ok: true }} onCommit={() => {}} />,
+    );
     fireEvent.click(screen.getByText("alice@example.com"));
     const input = screen.getByRole("textbox");
     expect(input).toBeInTheDocument();
