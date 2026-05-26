@@ -4,29 +4,52 @@ import {
   StepContext,
   type StepContextSubmit,
 } from "../../../components/upload-wizard/step-context";
+import { StepUploadFile } from "../../../components/upload-wizard/step-upload-file";
 import { WizardShell } from "../../../components/upload-wizard/wizard-shell";
+import type { ParseSuccess } from "../../../lib/parse-file";
 
 export const Route = createFileRoute("/_authed/admin/importers/$id/upload")({
   component: UploadWizardRoute,
 });
 
+type WizardState = {
+  context: StepContextSubmit | null;
+  parsed: ParseSuccess | null;
+};
+
 function UploadWizardRoute() {
   const { id } = Route.useParams();
-  const [context, setContext] = useState<StepContextSubmit | null>(null);
+  const [activeStep, setActiveStep] = useState<0 | 1>(0);
+  const [state, setState] = useState<WizardState>({ context: null, parsed: null });
+
+  function handleContextSubmit(context: StepContextSubmit) {
+    setState((s) => ({ ...s, context }));
+    setActiveStep(1);
+  }
+
+  function handleFileParsed(parsed: ParseSuccess) {
+    setState((s) => {
+      // TODO(Story #4): navigate using s.context here — always current.
+      console.info("[wizard] step 1 -> step 2", { context: s.context, parsed });
+      return { ...s, parsed };
+    });
+  }
 
   return (
-    <WizardShell activeStep={0}>
+    <WizardShell activeStep={activeStep}>
       <p className="mb-4 text-xs text-slate-500">Importer: {id}</p>
-      <StepContext
-        onSubmit={(value) => {
-          setContext(value);
-          // TODO(Story #3): replace this with router.navigate to the
-          // /admin/importers/$id/upload/file step once that route exists.
-          console.info("[wizard] step 0 -> step 1", value);
-        }}
-      />
-      {context !== null && (
-        <p className="mt-4 text-xs text-slate-500">Step 0 captured. Step 1 lands in Story #3.</p>
+
+      {activeStep === 0 && <StepContext onSubmit={handleContextSubmit} />}
+
+      {activeStep === 1 && (
+        <StepUploadFile onParsed={handleFileParsed} onBack={() => setActiveStep(0)} />
+      )}
+
+      {state.parsed && (
+        <p className="mt-4 text-xs text-slate-500">
+          Step 1 captured ({state.parsed.rowCount} rows from {state.parsed.fileName}). Step 2 lands
+          in Story #4.
+        </p>
       )}
     </WizardShell>
   );
