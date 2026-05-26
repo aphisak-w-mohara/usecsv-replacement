@@ -1,0 +1,31 @@
+# Credentials & secrets
+usecsv-credentials.txt
+*.env
+*.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.wrangler/
+.vite/
+
+# Cloudflare local state
+.dev.vars
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
