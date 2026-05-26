@@ -12,6 +12,8 @@
     "@evo-csv/shared": "workspace:*",
     "@evo-csv/worker": "workspace:*",
     "@tanstack/react-router": "^1.85.0",
+    "@tanstack/react-table": "^8.20.0",
+    "@tanstack/react-virtual": "^3.10.0",
     "@tanstack/router-devtools": "^1.85.0",
     "hono": "^4.6.0",
     "match-sorter": "^6.3.4",
