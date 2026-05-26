@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { StepContext } from "../src/components/upload-wizard/step-context";
@@ -48,7 +48,9 @@ describe("StepContext", () => {
     render(<StepContext onSubmit={() => {}} />);
 
     await user.click(screen.getByRole("button", { name: /advanced/i }));
-    await user.type(screen.getByLabelText(/user payload/i), "{foo: bar}");
+    fireEvent.change(screen.getByLabelText(/user payload/i), {
+      target: { value: "{foo: bar}" },
+    });
 
     const next = screen.getByRole("button", { name: /^next$/i });
     expect(next).toBeDisabled();
@@ -61,8 +63,8 @@ describe("StepContext", () => {
 
     await user.click(screen.getByRole("button", { name: /advanced/i }));
     const giant = JSON.stringify({ padding: "x".repeat(5000) });
-    await user.type(screen.getByLabelText(/user payload/i), giant, {
-      delay: 0,
+    fireEvent.change(screen.getByLabelText(/user payload/i), {
+      target: { value: giant },
     });
 
     expect(screen.getByText(/too large/i)).toBeInTheDocument();
@@ -75,7 +77,9 @@ describe("StepContext", () => {
     render(<StepContext onSubmit={onSubmit} />);
 
     await user.click(screen.getByRole("button", { name: /advanced/i }));
-    await user.type(screen.getByLabelText(/user payload/i), '{"role": "ops"}');
+    fireEvent.change(screen.getByLabelText(/user payload/i), {
+      target: { value: '{"role": "ops"}' },
+    });
     await user.click(screen.getByRole("button", { name: /^next$/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(
