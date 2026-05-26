@@ -21,12 +21,7 @@ describe("parseFile", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.format).toBe("csv");
-    expect(result.headers).toEqual([
-      "First name",
-      "Last name",
-      "Customer Email",
-      "Notes",
-    ]);
+    expect(result.headers).toEqual(["First name", "Last name", "Customer Email", "Notes"]);
     expect(result.rowCount).toBe(3);
     expect(result.rows[0]).toEqual({
       "First name": "Alice",
@@ -54,9 +49,7 @@ describe("parseFile", () => {
 
   it("rejects files > 25 MB", async () => {
     const big = new Uint8Array(26 * 1024 * 1024);
-    const result = await parseFile(
-      new File([big], "huge.csv", { type: "text/csv" }),
-    );
+    const result = await parseFile(new File([big], "huge.csv", { type: "text/csv" }));
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("FILE_TOO_LARGE");
