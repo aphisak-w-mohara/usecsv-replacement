@@ -1,0 +1,12 @@
+name = "evo-csv"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DEV_USER_EMAIL = "aphisak@mohara.co"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "evo-csv-dev"
+database_id = "REPLACE_ME_AFTER_wrangler_d1_create"
