@@ -4,8 +4,13 @@ import { z } from "zod";
 import type { Env, Variables } from "../env.js";
 import { generateId } from "../lib/ids.js";
 import { injectUserId } from "../lib/inject-user-id.js";
+import { buildWebhookPayload } from "../lib/webhook-payload.js";
 
 const MAX_PAYLOAD_BYTES = 4 * 1024; // 4 KB
+
+const batchIngestSchema = z.object({
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(1),
+});
 
 const uploadCreateSchema = z.object({
   importer_environment_id: z.string(),
@@ -130,6 +135,101 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
     } catch (err) {
       console.error("DB error in POST /api/uploads:", err);
       return c.json({ error: "Database error creating upload" }, 500);
+    }
+  },
+)
+.post(
+  "/:upload_id/batches/:batch_index",
+  zValidator("json", batchIngestSchema),
+  async (c) => {
+    const uploadId = c.req.param("upload_id");
+    const batchIndex = Number(c.req.param("batch_index"));
+    const { rows } = c.req.valid("json");
+    const session = c.get("session");
+
+    if (!Number.isInteger(batchIndex) || batchIndex < 1) {
+      return c.json({ error: "batch_index must be a positive integer" }, 400);
+    }
+
+    try {
+      const upload = await c.env.DB.prepare(
+        `SELECT u.id, u.numeric_id, u.file_name, u.matched_columns_map, u.uploaded_file_headers,
+                u.user_payload, u.metadata_payload, u.total_rows, u.batch_count,
+                ie.key AS importer_key
+         FROM uploads u
+         JOIN importer_environments ie ON ie.id = u.importer_environment_id
+         WHERE u.id = ? AND u.project_id = ?`,
+      )
+        .bind(uploadId, session.project_id)
+        .first<{
+          id: string;
+          numeric_id: number;
+          file_name: string;
+          matched_columns_map: string;
+          uploaded_file_headers: string;
+          user_payload: string | null;
+          metadata_payload: string | null;
+          total_rows: number;
+          batch_count: number;
+          importer_key: string;
+        }>();
+
+      if (!upload) {
+        return c.json({ error: "Upload not found" }, 404);
+      }
+      if (batchIndex > upload.batch_count) {
+        return c.json({ error: "batch_index exceeds batch_count" }, 400);
+      }
+
+      // Idempotent: if this batch is already persisted, return 204 without rewriting R2.
+      const existing = await c.env.DB.prepare(
+        "SELECT 1 FROM upload_batches WHERE upload_id = ? AND batch_index = ?",
+      )
+        .bind(uploadId, batchIndex)
+        .first();
+      if (existing) {
+        return c.body(null, 204);
+      }
+
+      const payload = buildWebhookPayload({
+        numericId: upload.numeric_id,
+        importerKey: upload.importer_key,
+        fileName: upload.file_name,
+        matchedColumnsMap: JSON.parse(upload.matched_columns_map),
+        uploadedFileHeaders: JSON.parse(upload.uploaded_file_headers),
+        batchIndex,
+        batchCount: upload.batch_count,
+        totalRows: upload.total_rows,
+        user: upload.user_payload ? JSON.parse(upload.user_payload) : null,
+        metadata: upload.metadata_payload ? JSON.parse(upload.metadata_payload) : null,
+        rows: rows as import("@evo-csv/shared").WebhookPayload["rows"],
+      });
+
+      const r2Key = `uploads/${uploadId}/batches/${batchIndex}.json`;
+      await c.env.UPLOADS_BUCKET.put(r2Key, JSON.stringify(payload), {
+        httpMetadata: { contentType: "application/json" },
+      });
+
+      const now = Math.floor(Date.now() / 1000);
+      await c.env.DB.prepare(
+        `INSERT INTO upload_batches (upload_id, batch_index, r2_key, row_count, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+        .bind(uploadId, batchIndex, r2Key, rows.length, now)
+        .run();
+
+      await c.env.DB.prepare(
+        "UPDATE uploads SET status = 'dispatching', updated_at = ? WHERE id = ? AND status = 'pending'",
+      )
+        .bind(now, uploadId)
+        .run();
+
+      await c.env.WEBHOOK_QUEUE.send({ uploadId, batchIndex, attempt: 1 });
+
+      return c.body(null, 204);
+    } catch (err) {
+      console.error("DB/R2 error in POST batch:", err);
+      return c.json({ error: "Failed to persist batch" }, 500);
     }
   },
 );
