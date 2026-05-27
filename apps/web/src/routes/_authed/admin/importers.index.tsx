@@ -15,12 +15,14 @@ function ImportersIndexRoute() {
   const [importers, setImporters] = useState<ImporterListItem[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
       try {
         const res = await api.api.importers.$get({
           query: showArchived ? { include_archived: "true" } : {},
@@ -30,6 +32,8 @@ function ImportersIndexRoute() {
         if (!cancelled) setImporters(data.importers as ImporterListItem[]);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -64,6 +68,7 @@ function ImportersIndexRoute() {
       importers={importers}
       showArchived={showArchived}
       creating={creating}
+      loading={loading}
       error={error}
       onToggleArchived={setShowArchived}
       onCreate={handleCreate}
