@@ -115,4 +115,79 @@ describe("ImporterListView", () => {
       screen.getByText("An importer with this name already exists"),
     ).toBeInTheDocument();
   });
+
+  it("retains the typed name when a create fails (error surfaced)", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    const input = screen.getByLabelText(/new importer name/i) as HTMLInputElement;
+    await user.type(input, "Properties");
+
+    // Parent starts the create...
+    rerender(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={true}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    // ...then it fails: creating goes false, error appears.
+    rerender(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        error="An importer with this name already exists"
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+
+    expect(input.value).toBe("Properties");
+  });
+
+  it("clears the input after a successful create completes", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    const input = screen.getByLabelText(/new importer name/i) as HTMLInputElement;
+    await user.type(input, "Properties");
+
+    rerender(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={true}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    rerender(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+
+    expect(input.value).toBe("");
+  });
 });

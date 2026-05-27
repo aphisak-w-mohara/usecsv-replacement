@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type ImporterListItem = {
   id: string;
@@ -34,11 +34,18 @@ export function ImporterListView({
   const trimmed = name.trim();
   const canCreate = trimmed.length > 0 && !creating;
 
+  const wasCreating = useRef(false);
+  useEffect(() => {
+    if (wasCreating.current && !creating && !error) {
+      setName("");
+    }
+    wasCreating.current = creating;
+  }, [creating, error]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canCreate) return;
     onCreate(trimmed);
-    setName("");
   }
 
   return (
