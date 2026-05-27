@@ -62,6 +62,11 @@ describe("POST /api/uploads/:id/batches/:index", () => {
       .bind(upload_id)
       .first<{ row_count: number }>();
     expect(batchRow?.row_count).toBe(3);
+
+    const statusRow = await env.DB.prepare("SELECT status FROM uploads WHERE id = ?")
+      .bind(upload_id)
+      .first<{ status: string }>();
+    expect(statusRow?.status).toBe("dispatching");
   });
 
   it("is idempotent on (upload_id, batch_index) — repeat returns 204, no duplicate row", async () => {

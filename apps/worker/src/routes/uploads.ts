@@ -5,6 +5,7 @@ import type { Env, Variables } from "../env.js";
 import { generateId } from "../lib/ids.js";
 import { injectUserId } from "../lib/inject-user-id.js";
 import { buildWebhookPayload } from "../lib/webhook-payload.js";
+import type { BuildWebhookPayloadInput } from "../lib/webhook-payload.js";
 
 const MAX_PAYLOAD_BYTES = 4 * 1024; // 4 KB
 
@@ -202,7 +203,7 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
         totalRows: upload.total_rows,
         user: upload.user_payload ? JSON.parse(upload.user_payload) : null,
         metadata: upload.metadata_payload ? JSON.parse(upload.metadata_payload) : null,
-        rows: rows as import("@evo-csv/shared").WebhookPayload["rows"],
+        rows: rows as BuildWebhookPayloadInput["rows"],
       });
 
       const r2Key = `uploads/${uploadId}/batches/${batchIndex}.json`;
