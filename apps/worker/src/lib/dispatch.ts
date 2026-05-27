@@ -57,18 +57,25 @@ export async function recomputeUploadStatus(env: Env, uploadId: string): Promise
     attemptsByBatch.set(a.batch_index, Math.max(attemptsByBatch.get(a.batch_index) ?? 0, a.attempt_number));
   }
 
+  // Phase 1: halted if any undelivered batch has exhausted its attempts.
   let status = "dispatching";
-  let allDelivered = true;
   for (let i = 1; i <= upload.batch_count; i++) {
-    if (!delivered.has(i)) {
-      allDelivered = false;
-      if ((attemptsByBatch.get(i) ?? 0) >= MAX_ATTEMPTS) {
-        status = "halted";
+    if (!delivered.has(i) && (attemptsByBatch.get(i) ?? 0) >= MAX_ATTEMPTS) {
+      status = "halted";
+      break;
+    }
+  }
+  // Phase 2: completed only if every batch has a 2xx delivery and we're not halted.
+  if (status !== "halted") {
+    let allDelivered = true;
+    for (let i = 1; i <= upload.batch_count; i++) {
+      if (!delivered.has(i)) {
+        allDelivered = false;
         break;
       }
     }
+    if (allDelivered) status = "completed";
   }
-  if (allDelivered) status = "completed";
 
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare("UPDATE uploads SET status = ?, updated_at = ? WHERE id = ?")
@@ -98,7 +105,10 @@ export async function dispatchBatch(
   )
     .bind(uploadId)
     .first<{ webhook_url: string; webhook_signing_enabled: number; webhook_secret: string | null }>();
-  if (!cfg) return;
+  if (!cfg) {
+    console.error(`dispatchBatch: no upload/importer_environment for upload ${uploadId}`);
+    return;
+  }
 
   const r2Key = `uploads/${uploadId}/batches/${batchIndex}.json`;
   const obj = await env.UPLOADS_BUCKET.get(r2Key);

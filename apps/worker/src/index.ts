@@ -19,7 +19,14 @@ export default {
   fetch: app.fetch,
   async queue(batch: MessageBatch<WebhookDispatchJob>, env: Env): Promise<void> {
     for (const message of batch.messages) {
-      await dispatchBatch(env, message.body);
+      try {
+        await dispatchBatch(env, message.body);
+      } catch (err) {
+        // Log but still ack. webhook_attempts uses INSERT OR IGNORE, so a
+        // redelivery would be a no-op for already-recorded attempts; acking
+        // here prevents a redelivery storm on persistent D1/R2 errors.
+        console.error("dispatchBatch threw unexpectedly:", err);
+      }
       message.ack();
     }
   },
