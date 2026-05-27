@@ -35,7 +35,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         FROM importers i
         WHERE i.project_id = ?
         ${includeArchived ? "" : "AND i.archived_at IS NULL"}
-        ORDER BY i.updated_at DESC`;
+        ORDER BY i.updated_at DESC, i.id ASC`;
 
       const result = await c.env.DB.prepare(sql)
         .bind(session.project_id)

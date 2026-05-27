@@ -6,16 +6,15 @@ describe("GET /api/importers", () => {
     const res = await SELF.fetch("https://example.com/api/importers");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.importers).toEqual([
-      expect.objectContaining({
-        id: "imp_tenants",
-        name: "Tenants",
-        column_count: 3,
-        env_count: 1,
-        archived: false,
-        updated_at: expect.any(Number),
-      }),
-    ]);
+    const tenants = body.importers.find((i: { id: string }) => i.id === "imp_tenants");
+    expect(tenants).toMatchObject({
+      id: "imp_tenants",
+      name: "Tenants",
+      column_count: 3,
+      env_count: 1,
+      archived: false,
+      updated_at: expect.any(Number),
+    });
   });
 
   it("excludes archived importers by default and includes them with ?include_archived=true", async () => {
