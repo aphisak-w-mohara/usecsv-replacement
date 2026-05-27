@@ -108,6 +108,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@evo-csv/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@hono/zod-validator':
         specifier: ^0.4.0
         version: 0.4.3(hono@4.12.23)(zod@3.25.76)

@@ -10,3 +10,19 @@ DEV_USER_EMAIL = "aphisak@mohara.co"
 binding = "DB"
 database_name = "evo-csv-dev"
 database_id = "21b06102-dd71-4e58-a8ce-19118a48d472"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "UPLOADS_BUCKET"
+bucket_name = "evo-csv-uploads"
+
+[[queues.producers]]
+binding = "WEBHOOK_QUEUE"
+queue = "webhook-dispatch"
+
+# We manage our own attempt counting + backoff via re-enqueue, so the platform
+# retry is disabled (max_retries = 0) and batches are processed one at a time.
+[[queues.consumers]]
+queue = "webhook-dispatch"
+max_batch_size = 1
+max_retries = 0

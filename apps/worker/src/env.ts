@@ -1,6 +1,10 @@
+import type { WebhookDispatchJob } from "@evo-csv/shared";
+
 export type Env = {
   DB: D1Database;
   DEV_USER_EMAIL: string;
+  UPLOADS_BUCKET: R2Bucket;
+  WEBHOOK_QUEUE: Queue<WebhookDispatchJob>;
 };
 
 export type SessionContext = {
