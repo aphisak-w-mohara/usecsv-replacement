@@ -8,52 +8,112 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as AuthedAdminImportersIdUploadRouteImport } from "./routes/_authed/admin/importers.$id.upload";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthedAdminImportersIndexRouteImport } from './routes/_authed/admin/importers.index'
+import { Route as AuthedAdminImportersIdRouteImport } from './routes/_authed/admin/importers.$id'
+import { Route as AuthedAdminImportersIdUploadRouteImport } from './routes/_authed/admin/importers.$id.upload'
 
-const AuthedAdminImportersIdUploadRoute = AuthedAdminImportersIdUploadRouteImport.update({
-  id: "/_authed/admin/importers/$id/upload",
-  path: "/admin/importers/$id/upload",
+const AuthedAdminImportersIndexRoute =
+  AuthedAdminImportersIndexRouteImport.update({
+    id: '/_authed/admin/importers/',
+    path: '/admin/importers/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AuthedAdminImportersIdRoute = AuthedAdminImportersIdRouteImport.update({
+  id: '/_authed/admin/importers/$id',
+  path: '/admin/importers/$id',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
+const AuthedAdminImportersIdUploadRoute =
+  AuthedAdminImportersIdUploadRouteImport.update({
+    id: '/upload',
+    path: '/upload',
+    getParentRoute: () => AuthedAdminImportersIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  "/admin/importers/$id/upload": typeof AuthedAdminImportersIdUploadRoute;
+  '/admin/importers/$id': typeof AuthedAdminImportersIdRouteWithChildren
+  '/admin/importers/': typeof AuthedAdminImportersIndexRoute
+  '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRoutesByTo {
-  "/admin/importers/$id/upload": typeof AuthedAdminImportersIdUploadRoute;
+  '/admin/importers/$id': typeof AuthedAdminImportersIdRouteWithChildren
+  '/admin/importers': typeof AuthedAdminImportersIndexRoute
+  '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/_authed/admin/importers/$id/upload": typeof AuthedAdminImportersIdUploadRoute;
+  __root__: typeof rootRouteImport
+  '/_authed/admin/importers/$id': typeof AuthedAdminImportersIdRouteWithChildren
+  '/_authed/admin/importers/': typeof AuthedAdminImportersIndexRoute
+  '/_authed/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/admin/importers/$id/upload";
-  fileRoutesByTo: FileRoutesByTo;
-  to: "/admin/importers/$id/upload";
-  id: "__root__" | "/_authed/admin/importers/$id/upload";
-  fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths:
+    | '/admin/importers/$id'
+    | '/admin/importers/'
+    | '/admin/importers/$id/upload'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/admin/importers/$id'
+    | '/admin/importers'
+    | '/admin/importers/$id/upload'
+  id:
+    | '__root__'
+    | '/_authed/admin/importers/$id'
+    | '/_authed/admin/importers/'
+    | '/_authed/admin/importers/$id/upload'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute;
+  AuthedAdminImportersIdRoute: typeof AuthedAdminImportersIdRouteWithChildren
+  AuthedAdminImportersIndexRoute: typeof AuthedAdminImportersIndexRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/_authed/admin/importers/$id/upload": {
-      id: "/_authed/admin/importers/$id/upload";
-      path: "/admin/importers/$id/upload";
-      fullPath: "/admin/importers/$id/upload";
-      preLoaderRoute: typeof AuthedAdminImportersIdUploadRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+    '/_authed/admin/importers/': {
+      id: '/_authed/admin/importers/'
+      path: '/admin/importers'
+      fullPath: '/admin/importers/'
+      preLoaderRoute: typeof AuthedAdminImportersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/admin/importers/$id': {
+      id: '/_authed/admin/importers/$id'
+      path: '/admin/importers/$id'
+      fullPath: '/admin/importers/$id'
+      preLoaderRoute: typeof AuthedAdminImportersIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/admin/importers/$id/upload': {
+      id: '/_authed/admin/importers/$id/upload'
+      path: '/upload'
+      fullPath: '/admin/importers/$id/upload'
+      preLoaderRoute: typeof AuthedAdminImportersIdUploadRouteImport
+      parentRoute: typeof AuthedAdminImportersIdRoute
+    }
   }
 }
 
+interface AuthedAdminImportersIdRouteChildren {
+  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute
+}
+
+const AuthedAdminImportersIdRouteChildren: AuthedAdminImportersIdRouteChildren =
+  {
+    AuthedAdminImportersIdUploadRoute: AuthedAdminImportersIdUploadRoute,
+  }
+
+const AuthedAdminImportersIdRouteWithChildren =
+  AuthedAdminImportersIdRoute._addFileChildren(
+    AuthedAdminImportersIdRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
-  AuthedAdminImportersIdUploadRoute: AuthedAdminImportersIdUploadRoute,
-};
+  AuthedAdminImportersIdRoute: AuthedAdminImportersIdRouteWithChildren,
+  AuthedAdminImportersIndexRoute: AuthedAdminImportersIndexRoute,
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()
