@@ -331,6 +331,14 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
 
     for (let i = 1; i <= upload.batch_count; i++) {
       if (!delivered.has(i)) {
+        // Clear prior attempts so the retried delivery gets a fresh attempt-number
+        // slot (otherwise INSERT OR IGNORE in the consumer silently drops it and the
+        // upload can never leave 'halted'). This also resets the 6-attempt budget.
+        await c.env.DB.prepare(
+          "DELETE FROM webhook_attempts WHERE upload_id = ? AND batch_index = ?",
+        )
+          .bind(uploadId, i)
+          .run();
         await c.env.WEBHOOK_QUEUE.send({ uploadId, batchIndex: i, attempt: 1 });
       }
     }

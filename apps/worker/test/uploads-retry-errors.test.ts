@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { dispatchBatch } from "../src/lib/dispatch";
 
 const UPLOAD_BODY = {
   importer_environment_id: "impenv_tenants_staging",
@@ -52,6 +53,44 @@ describe("POST /api/uploads/:id/retry", () => {
   it("404s when the upload is not in the active project", async () => {
     const res = await SELF.fetch("https://example.com/api/uploads/upl_nope/retry", { method: "POST" });
     expect(res.status).toBe(404);
+  });
+
+  it("clears prior failed attempts so a retried delivery can recover a halted upload", async () => {
+    const id = await seed();
+
+    // Seed 6 failed attempts for batch 1 (simulates a natural halt cycle).
+    const now = Math.floor(Date.now() / 1000);
+    for (let n = 1; n <= 6; n++) {
+      await env.DB.prepare(
+        `INSERT INTO webhook_attempts (id, upload_id, batch_index, attempt_number, status_code, response_body, started_at, finished_at)
+         VALUES (?, ?, 1, ?, 500, 'boom', ?, ?)`,
+      ).bind(`wha_${crypto.randomUUID()}`, id, n, now, now).run();
+    }
+    await env.DB.prepare("UPDATE uploads SET status = 'halted' WHERE id = ?").bind(id).run();
+
+    // Retry should succeed and clear prior attempts.
+    const retryRes = await SELF.fetch(`https://example.com/api/uploads/${id}/retry`, { method: "POST" });
+    expect(retryRes.status).toBe(202);
+
+    // All 6 old attempt rows must be gone.
+    const countRow = await env.DB.prepare(
+      "SELECT COUNT(*) AS cnt FROM webhook_attempts WHERE upload_id = ?",
+    )
+      .bind(id)
+      .first<{ cnt: number }>();
+    expect(countRow?.cnt).toBe(0);
+
+    // Now dispatch with a 2xx response — upload must recover to 'completed'.
+    await dispatchBatch(
+      env,
+      { uploadId: id, batchIndex: 1, attempt: 1 },
+      async () => new Response(JSON.stringify({ errors: [] }), { status: 200 }) as unknown as Response,
+    );
+
+    const upload = await env.DB.prepare("SELECT status FROM uploads WHERE id = ?")
+      .bind(id)
+      .first<{ status: string }>();
+    expect(upload?.status).toBe("completed");
   });
 });
 

@@ -104,9 +104,13 @@ export async function dispatchBatch(
      WHERE u.id = ?`,
   )
     .bind(uploadId)
-    .first<{ webhook_url: string; webhook_signing_enabled: number; webhook_secret: string | null }>();
+    .first<{ webhook_url: string | null; webhook_signing_enabled: number; webhook_secret: string | null }>();
   if (!cfg) {
     console.error(`dispatchBatch: no upload/importer_environment for upload ${uploadId}`);
+    return;
+  }
+  if (!cfg.webhook_url) {
+    console.error(`dispatchBatch: no webhook_url for upload ${uploadId}`);
     return;
   }
 

@@ -60,4 +60,38 @@ describe("useUploadStatus", () => {
     });
     expect(fetchStatus).not.toHaveBeenCalled();
   });
+
+  it("re-arms polling when restartKey changes after a terminal status", async () => {
+    const fetchStatus = vi
+      .fn<(id: string) => Promise<UploadStatusResponse>>()
+      .mockResolvedValueOnce(statusResponse({ status: "halted" }))
+      .mockResolvedValueOnce(statusResponse({ status: "dispatching" }))
+      .mockResolvedValueOnce(statusResponse({ status: "completed" }));
+
+    const { rerender } = renderHook(
+      ({ key }: { key: number }) => useUploadStatus("upl_1", fetchStatus, key),
+      { initialProps: { key: 0 } },
+    );
+
+    // Initial fetch fires immediately -> halted (terminal, stops).
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    // Confirm polling has stopped.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(1);
+
+    // Bump restartKey -> effect re-runs -> polling restarts.
+    await act(async () => {
+      rerender({ key: 1 });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+  });
 });
