@@ -5,8 +5,8 @@ describe("GET /api/importers", () => {
   it("lists non-archived importers for the dev session's project with counts", async () => {
     const res = await SELF.fetch("https://example.com/api/importers");
     expect(res.status).toBe(200);
-    const body = await res.json();
-    const tenants = body.importers.find((i: { id: string }) => i.id === "imp_tenants");
+    const body = await res.json<{ importers: { id: string }[] }>();
+    const tenants = body.importers.find((i) => i.id === "imp_tenants");
     expect(tenants).toMatchObject({
       id: "imp_tenants",
       name: "Tenants",
@@ -24,13 +24,15 @@ describe("GET /api/importers", () => {
        VALUES ('imp_archived', 'proj_evo', 'Old Importer', unixepoch(), unixepoch(), unixepoch())`,
     ).run();
 
-    const without = await (await SELF.fetch("https://example.com/api/importers")).json();
-    expect(without.importers.map((i: { id: string }) => i.id)).not.toContain("imp_archived");
+    const without = await (
+      await SELF.fetch("https://example.com/api/importers")
+    ).json<{ importers: { id: string }[] }>();
+    expect(without.importers.map((i) => i.id)).not.toContain("imp_archived");
 
     const withArchived = await (
       await SELF.fetch("https://example.com/api/importers?include_archived=true")
-    ).json();
-    const archived = withArchived.importers.find((i: { id: string }) => i.id === "imp_archived");
+    ).json<{ importers: { id: string; archived: boolean }[] }>();
+    const archived = withArchived.importers.find((i) => i.id === "imp_archived");
     expect(archived).toMatchObject({ id: "imp_archived", archived: true });
   });
 
@@ -47,8 +49,8 @@ describe("GET /api/importers", () => {
 
     const body = await (
       await SELF.fetch("https://example.com/api/importers?include_archived=true")
-    ).json();
-    expect(body.importers.map((i: { id: string }) => i.id)).not.toContain("imp_foreign");
+    ).json<{ importers: { id: string }[] }>();
+    expect(body.importers.map((i) => i.id)).not.toContain("imp_foreign");
   });
 });
 
@@ -64,7 +66,7 @@ describe("POST /api/importers", () => {
   it("creates an importer scoped to the session project and returns it", async () => {
     const res = await create({ name: "Properties" });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json<{ importer: { id: string } }>();
     expect(body.importer).toMatchObject({
       name: "Properties",
       column_count: 0,
@@ -90,14 +92,14 @@ describe("POST /api/importers", () => {
   it("rejects a duplicate name (case-insensitive) within the project with 409", async () => {
     const res = await create({ name: "tenants" });
     expect(res.status).toBe(409);
-    const body = await res.json();
+    const body = await res.json<{ error: string }>();
     expect(body.error).toBe("An importer with this name already exists");
   });
 
   it("ignores any project_id in the body and uses the session project", async () => {
     const res = await create({ name: "Forged Project Importer", project_id: "proj_foreign" });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json<{ importer: { id: string } }>();
 
     const { env } = await import("cloudflare:test");
     const row = await env.DB.prepare(
