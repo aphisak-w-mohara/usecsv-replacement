@@ -26,6 +26,7 @@ const TERMINAL = new Set(["completed", "halted", "failed"]);
 export function useUploadStatus(
   uploadId: string | null,
   fetchStatus: (id: string) => Promise<UploadStatusResponse>,
+  restartKey: number = 0,
 ) {
   const [status, setStatus] = useState<UploadStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export function useUploadStatus(
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [uploadId, fetchStatus]);
+  }, [uploadId, fetchStatus, restartKey]);
 
   return { status, error };
 }

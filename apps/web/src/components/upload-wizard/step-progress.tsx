@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { buildBatches } from "../../lib/build-batches";
 import { useUploadStatus, type UploadStatusResponse } from "../../lib/use-upload-status";
 
@@ -65,7 +65,14 @@ export function StepProgress({
   const submittingRef = useRef(false);
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
-  const { status } = useUploadStatus(uploadId, apiClient.fetchStatus);
+  // Keep the latest fetchStatus in a ref so the hook's effect deps stay stable
+  // even though `apiClient` is a fresh object literal on every parent render.
+  const fetchStatusRef = useRef(apiClient.fetchStatus);
+  fetchStatusRef.current = apiClient.fetchStatus;
+  const stableFetchStatus = useCallback((id: string) => fetchStatusRef.current(id), []);
+  const [retryKey, setRetryKey] = useState(0);
+
+  const { status } = useUploadStatus(uploadId, stableFetchStatus, retryKey);
 
   async function handleSubmit() {
     if (submittingRef.current) return;
@@ -105,11 +112,8 @@ export function StepProgress({
   async function handleRetry() {
     if (!uploadId || !onRetry) return;
     await onRetry(uploadId);
-    // Re-arm polling: clear then re-set uploadId so useUploadStatus re-subscribes.
-    const id = uploadId;
-    setUploadId(null);
     setPhase("polling");
-    setTimeout(() => setUploadId(id), 0);
+    setRetryKey((k) => k + 1); // restart polling via useUploadStatus restart signal
   }
 
   const batchCount = status?.batch_count ?? Math.max(1, Math.ceil(editedRows.length / batchSize));
@@ -157,6 +161,7 @@ export function StepProgress({
               className="h-full bg-slate-900 transition-all"
               style={{ width: `${pct}%` }}
               role="progressbar"
+              aria-label="Batch delivery progress"
               aria-valuenow={pct}
               aria-valuemin={0}
               aria-valuemax={100}
