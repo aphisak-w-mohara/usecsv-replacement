@@ -1,6 +1,15 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../env.js";
 
+type ImporterListRow = {
+  id: string;
+  name: string;
+  archived_at: number | null;
+  updated_at: number;
+  column_count: number;
+  env_count: number;
+};
+
 type ImporterColumnRow = {
   id: string;
   name: string;
@@ -13,9 +22,41 @@ type ImporterColumnRow = {
   validation_format: string | null;
 };
 
-export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>().get(
-  "/:importer_id/columns",
-  async (c) => {
+export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
+  .get("/", async (c) => {
+    const session = c.get("session");
+    const includeArchived = c.req.query("include_archived") === "true";
+
+    try {
+      const sql = `
+        SELECT i.id, i.name, i.archived_at, i.updated_at,
+               (SELECT COUNT(*) FROM importer_columns ic WHERE ic.importer_id = i.id) AS column_count,
+               (SELECT COUNT(*) FROM importer_environments ie WHERE ie.importer_id = i.id) AS env_count
+        FROM importers i
+        WHERE i.project_id = ?
+        ${includeArchived ? "" : "AND i.archived_at IS NULL"}
+        ORDER BY i.updated_at DESC`;
+
+      const result = await c.env.DB.prepare(sql)
+        .bind(session.project_id)
+        .all<ImporterListRow>();
+
+      const importers = result.results.map((row) => ({
+        id: row.id,
+        name: row.name,
+        column_count: row.column_count,
+        env_count: row.env_count,
+        archived: row.archived_at !== null,
+        updated_at: row.updated_at,
+      }));
+
+      return c.json({ importers });
+    } catch (err) {
+      console.error("DB error in GET /api/importers:", err);
+      return c.json({ error: "Database error listing importers" }, 500);
+    }
+  })
+  .get("/:importer_id/columns", async (c) => {
     const importerId = c.req.param("importer_id");
     const session = c.get("session");
 

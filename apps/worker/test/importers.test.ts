@@ -1,6 +1,58 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
+describe("GET /api/importers", () => {
+  it("lists non-archived importers for the dev session's project with counts", async () => {
+    const res = await SELF.fetch("https://example.com/api/importers");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.importers).toEqual([
+      expect.objectContaining({
+        id: "imp_tenants",
+        name: "Tenants",
+        column_count: 3,
+        env_count: 1,
+        archived: false,
+        updated_at: expect.any(Number),
+      }),
+    ]);
+  });
+
+  it("excludes archived importers by default and includes them with ?include_archived=true", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT INTO importers (id, project_id, name, archived_at, created_at, updated_at)
+       VALUES ('imp_archived', 'proj_evo', 'Old Importer', unixepoch(), unixepoch(), unixepoch())`,
+    ).run();
+
+    const without = await (await SELF.fetch("https://example.com/api/importers")).json();
+    expect(without.importers.map((i: { id: string }) => i.id)).not.toContain("imp_archived");
+
+    const withArchived = await (
+      await SELF.fetch("https://example.com/api/importers?include_archived=true")
+    ).json();
+    const archived = withArchived.importers.find((i: { id: string }) => i.id === "imp_archived");
+    expect(archived).toMatchObject({ id: "imp_archived", archived: true });
+  });
+
+  it("never lists importers from a different project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO projects (id, slug, name, created_at)
+       VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_foreign', 'proj_foreign', 'Foreign Importer', unixepoch(), unixepoch())`,
+    ).run();
+
+    const body = await (
+      await SELF.fetch("https://example.com/api/importers?include_archived=true")
+    ).json();
+    expect(body.importers.map((i: { id: string }) => i.id)).not.toContain("imp_foreign");
+  });
+});
+
 describe("GET /api/importers/:importer_id/columns", () => {
   it("returns the column list for a known importer scoped to the dev session's project", async () => {
     const res = await SELF.fetch("https://example.com/api/importers/imp_tenants/columns");
