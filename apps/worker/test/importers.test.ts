@@ -96,6 +96,37 @@ describe("POST /api/importers", () => {
     expect(body.error).toBe("An importer with this name already exists");
   });
 
+  it("double-creating the same name yields exactly one row and a 409", async () => {
+    const first = await create({ name: "Vehicles" });
+    expect(first.status).toBe(201);
+
+    const second = await create({ name: "Vehicles" });
+    expect(second.status).toBe(409);
+    const body = await second.json<{ error: string }>();
+    expect(body.error).toBe("An importer with this name already exists");
+
+    const { env } = await import("cloudflare:test");
+    const rows = await env.DB.prepare(
+      "SELECT id FROM importers WHERE project_id = 'proj_evo' AND name = 'Vehicles'",
+    ).all();
+    expect(rows.results).toHaveLength(1);
+  });
+
+  it("enforces (project, name) uniqueness at the DB level, case-insensitively", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_dup_a', 'proj_evo', 'Vendors', unixepoch(), unixepoch())`,
+    ).run();
+
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_dup_b', 'proj_evo', 'vendors', unixepoch(), unixepoch())`,
+      ).run(),
+    ).rejects.toThrow(/UNIQUE constraint failed/i);
+  });
+
   it("ignores any project_id in the body and uses the session project", async () => {
     const res = await create({ name: "Forged Project Importer", project_id: "proj_foreign" });
     expect(res.status).toBe(201);

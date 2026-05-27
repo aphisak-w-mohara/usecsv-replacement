@@ -106,6 +106,12 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         201,
       );
     } catch (err) {
+      // Backstop for the SELECT-then-INSERT race: the unique index on
+      // (project_id, name COLLATE NOCASE) rejects a concurrent duplicate that
+      // slipped past the pre-insert check. Surface the same friendly 409.
+      if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
+        return c.json({ error: "An importer with this name already exists" }, 409);
+      }
       console.error("DB error in POST /api/importers:", err);
       return c.json({ error: "Database error creating importer" }, 500);
     }
