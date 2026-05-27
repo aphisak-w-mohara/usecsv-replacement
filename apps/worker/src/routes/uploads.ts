@@ -30,6 +30,7 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
   async (c) => {
     const body = c.req.valid("json");
     const session = c.get("session");
+    const idempotencyKey = c.req.header("Idempotency-Key") ?? null;
 
     // Size guards: each JSON payload independently capped at 4 KB.
     if (body.user_payload && jsonByteSize(body.user_payload) > MAX_PAYLOAD_BYTES) {
@@ -46,6 +47,21 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
     }
 
     try {
+      // Idempotent replay: if this key already created an upload, return it unchanged.
+      if (idempotencyKey) {
+        const existing = await c.env.DB.prepare(
+          "SELECT id, numeric_id, status FROM uploads WHERE idempotency_key = ?",
+        )
+          .bind(idempotencyKey)
+          .first<{ id: string; numeric_id: number; status: string }>();
+        if (existing) {
+          return c.json(
+            { upload_id: existing.id, numeric_id: existing.numeric_id, status: existing.status },
+            200,
+          );
+        }
+      }
+
       // Verify the importer_environment exists and belongs to the active project.
       const impEnv = await c.env.DB.prepare(
         `SELECT ie.id, i.project_id
@@ -79,8 +95,8 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
           id, numeric_id, project_id, importer_environment_id, file_name, file_size,
           r2_source_key, matched_columns_map, uploaded_file_headers,
           user_payload, metadata_payload, total_rows, batch_size, batch_count,
-          status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          status, idempotency_key, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
       )
         .bind(
           uploadId,
@@ -97,6 +113,7 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
           body.total_rows,
           body.batch_size,
           body.batch_count,
+          idempotencyKey,
           now,
           now,
         )

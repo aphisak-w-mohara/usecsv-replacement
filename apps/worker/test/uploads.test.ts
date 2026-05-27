@@ -144,3 +144,36 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /api/uploads — idempotency", () => {
+  it("returns the same upload row for a repeated Idempotency-Key, creating no duplicate", async () => {
+    const key = `idem-${crypto.randomUUID()}`;
+    const headers = { "Content-Type": "application/json", "Idempotency-Key": key };
+
+    const first = await SELF.fetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(VALID_BODY),
+    });
+    expect(first.status).toBe(201);
+    const firstBody = await first.json();
+
+    const second = await SELF.fetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(VALID_BODY),
+    });
+    // Idempotent replay returns 200 with the SAME upload, never a new 201.
+    expect(second.status).toBe(200);
+    const secondBody = await second.json();
+    expect(secondBody.upload_id).toBe(firstBody.upload_id);
+    expect(secondBody.numeric_id).toBe(firstBody.numeric_id);
+
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM uploads WHERE idempotency_key = ?",
+    )
+      .bind(key)
+      .first<{ n: number }>();
+    expect(count?.n).toBe(1);
+  });
+});
