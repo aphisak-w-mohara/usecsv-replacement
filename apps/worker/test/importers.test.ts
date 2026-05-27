@@ -52,6 +52,63 @@ describe("GET /api/importers", () => {
   });
 });
 
+describe("POST /api/importers", () => {
+  async function create(body: unknown) {
+    return SELF.fetch("https://example.com/api/importers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("creates an importer scoped to the session project and returns it", async () => {
+    const res = await create({ name: "Properties" });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.importer).toMatchObject({
+      name: "Properties",
+      column_count: 0,
+      env_count: 0,
+      archived: false,
+    });
+    expect(body.importer.id).toMatch(/^imp_/);
+
+    const { env } = await import("cloudflare:test");
+    const row = await env.DB.prepare(
+      "SELECT project_id FROM importers WHERE id = ?",
+    )
+      .bind(body.importer.id)
+      .first<{ project_id: string }>();
+    expect(row?.project_id).toBe("proj_evo");
+  });
+
+  it("trims the name and rejects an empty/whitespace name with 400", async () => {
+    const res = await create({ name: "   " });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a duplicate name (case-insensitive) within the project with 409", async () => {
+    const res = await create({ name: "tenants" });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("An importer with this name already exists");
+  });
+
+  it("ignores any project_id in the body and uses the session project", async () => {
+    const res = await create({ name: "Forged Project Importer", project_id: "proj_foreign" });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+
+    const { env } = await import("cloudflare:test");
+    const row = await env.DB.prepare(
+      "SELECT project_id FROM importers WHERE id = ?",
+    )
+      .bind(body.importer.id)
+      .first<{ project_id: string }>();
+    expect(row?.project_id).toBe("proj_evo");
+  });
+});
+
 describe("GET /api/importers/:importer_id/columns", () => {
   it("returns the column list for a known importer scoped to the dev session's project", async () => {
     const res = await SELF.fetch("https://example.com/api/importers/imp_tenants/columns");
