@@ -22,6 +22,10 @@ function pluralize(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+function formatUpdated(updatedAtSeconds: number): string {
+  return new Date(updatedAtSeconds * 1000).toLocaleDateString();
+}
+
 export function ImporterListView({
   importers,
   showArchived,
@@ -108,6 +112,9 @@ export function ImporterListView({
                 <span className="text-xs text-slate-500">
                   {pluralize(importer.column_count, "column")} ·{" "}
                   {pluralize(importer.env_count, "environment")}
+                </span>
+                <span className="text-xs text-slate-400">
+                  Updated {formatUpdated(importer.updated_at)}
                 </span>
               </div>
             </li>

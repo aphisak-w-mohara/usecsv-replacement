@@ -33,6 +33,26 @@ describe("ImporterListView", () => {
     expect(screen.getByText(/1 environment/)).toBeInTheDocument();
   });
 
+  it("shows when each importer was last updated", () => {
+    render(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    // tenants.updated_at = 1716000000 (seconds) -> a real date; we render a
+    // locale date string prefixed with "Updated". Assert the label appears
+    // and the correct year (2024) is shown, locale-independently.
+    const updated = screen.getByText(/updated/i);
+    expect(updated).toBeInTheDocument();
+    expect(updated.textContent).toContain(
+      new Date(1716000000 * 1000).getFullYear().toString(),
+    );
+  });
+
   it("shows an empty state when there are no importers", () => {
     render(
       <ImporterListView
