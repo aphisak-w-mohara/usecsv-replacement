@@ -22,7 +22,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
       body: JSON.stringify(VALID_BODY),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json<{ upload_id: string; numeric_id: number; status: string }>();
     expect(body).toMatchObject({
       upload_id: expect.stringMatching(/^upl_/),
       numeric_id: expect.any(Number),
@@ -37,7 +37,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
       body: JSON.stringify(VALID_BODY),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json<{ upload_id: string }>();
     const upload = await env.DB.prepare("SELECT user_payload FROM uploads WHERE id = ?")
       .bind(body.upload_id)
       .first<{ user_payload: string }>();
@@ -54,7 +54,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json<{ upload_id: string }>();
     const upload = await env.DB.prepare("SELECT user_payload FROM uploads WHERE id = ?")
       .bind(body.upload_id)
       .first<{ user_payload: string }>();
@@ -74,7 +74,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await res.json<{ upload_id: string }>();
     const upload = await env.DB.prepare("SELECT metadata_payload FROM uploads WHERE id = ?")
       .bind(body.upload_id)
       .first<{ metadata_payload: string }>();
@@ -101,7 +101,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
       body: JSON.stringify({ ...VALID_BODY, user_payload: giant }),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json<{ error: string }>();
     expect(body.error).toMatch(/too large/i);
   });
 
@@ -113,7 +113,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
       body: JSON.stringify({ ...VALID_BODY, metadata_payload: giant }),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json<{ error: string }>();
     expect(body.error).toMatch(/too large/i);
   });
 

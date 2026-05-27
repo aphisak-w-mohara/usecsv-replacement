@@ -5,7 +5,7 @@ describe("GET /api/importers/:importer_id/columns", () => {
   it("returns the column list for a known importer scoped to the dev session's project", async () => {
     const res = await SELF.fetch("https://example.com/api/importers/imp_tenants/columns");
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json<{ importer_id: string; columns: { name: string }[] }>();
     expect(body).toMatchObject({
       importer_id: "imp_tenants",
       columns: expect.any(Array),
@@ -27,8 +27,8 @@ describe("GET /api/importers/:importer_id/columns", () => {
   it("returns columns in position order, not insertion order", async () => {
     const res = await SELF.fetch("https://example.com/api/importers/imp_tenants/columns");
     expect(res.status).toBe(200);
-    const body = await res.json();
-    const names = body.columns.map((c: { name: string }) => c.name);
+    const body = await res.json<{ columns: { name: string }[] }>();
+    const names = body.columns.map((c) => c.name);
     expect(names).toEqual(["first_name", "last_name", "email"]);
   });
 
