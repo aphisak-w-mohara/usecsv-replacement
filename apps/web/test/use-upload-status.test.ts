@@ -26,7 +26,7 @@ describe("useUploadStatus", () => {
 
   it("polls every 2s and stops once status is terminal", async () => {
     const fetchStatus = vi
-      .fn<[], Promise<UploadStatusResponse>>()
+      .fn<(id: string) => Promise<UploadStatusResponse>>()
       .mockResolvedValueOnce(statusResponse({ status: "dispatching" }))
       .mockResolvedValueOnce(statusResponse({ status: "completed", batches_delivered: 1 }));
 

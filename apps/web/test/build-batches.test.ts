@@ -12,15 +12,15 @@ describe("buildBatches", () => {
     const result = buildBatches(editedRows, matched, 1000);
     expect(result.total_rows).toBe(1);
     expect(result.batch_count).toBe(1);
-    expect(result.batches[0].index).toBe(1);
-    expect(result.batches[0].rows[0]).toEqual({
+    expect(result.batches[0]!.index).toBe(1);
+    expect(result.batches[0]!.rows[0]).toEqual({
       row: 1,
       first_name: "Alice",
       last_name: "Smith",
       email: "a@b.com",
     });
     // Unmatched 'Notes' column is dropped from rows[].
-    expect(result.batches[0].rows[0]).not.toHaveProperty("Notes");
+    expect(result.batches[0]!.rows[0]).not.toHaveProperty("Notes");
   });
 
   it("chunks 2500 rows into 3 batches with global row numbering", () => {
@@ -33,9 +33,9 @@ describe("buildBatches", () => {
     expect(result.batch_count).toBe(3);
     expect(result.total_rows).toBe(2500);
     expect(result.batches.map((b) => b.index)).toEqual([1, 2, 3]);
-    expect(result.batches[0].rows.length).toBe(1000);
-    expect(result.batches[2].rows.length).toBe(500);
+    expect(result.batches[0]!.rows.length).toBe(1000);
+    expect(result.batches[2]!.rows.length).toBe(500);
     // batch 3, row 1 is the 2001st source row.
-    expect(result.batches[2].rows[0].row).toBe(2001);
+    expect(result.batches[2]!.rows[0]!.row).toBe(2001);
   });
 });
