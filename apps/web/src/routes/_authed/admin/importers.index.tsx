@@ -19,7 +19,6 @@ function ImportersIndexRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    setError(null);
 
     async function load() {
       try {
