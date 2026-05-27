@@ -233,4 +233,74 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       return c.json({ error: "Failed to persist batch" }, 500);
     }
   },
-);
+)
+.get("/:upload_id", async (c) => {
+  const uploadId = c.req.param("upload_id");
+  const session = c.get("session");
+
+  try {
+    const upload = await c.env.DB.prepare(
+      "SELECT id, numeric_id, status, batch_count FROM uploads WHERE id = ? AND project_id = ?",
+    )
+      .bind(uploadId, session.project_id)
+      .first<{ id: string; numeric_id: number; status: string; batch_count: number }>();
+    if (!upload) {
+      return c.json({ error: "Upload not found" }, 404);
+    }
+
+    const attempts = await c.env.DB.prepare(
+      `SELECT batch_index, attempt_number, status_code, response_body, errors_json
+       FROM webhook_attempts WHERE upload_id = ?
+       ORDER BY started_at ASC, attempt_number ASC`,
+    )
+      .bind(uploadId)
+      .all<{
+        batch_index: number;
+        attempt_number: number;
+        status_code: number | null;
+        response_body: string | null;
+        errors_json: string | null;
+      }>();
+
+    const rows = attempts.results ?? [];
+
+    const deliveredSet = new Set<number>();
+    const rowErrors: Array<{ row: number; msg: string }> = [];
+    for (const a of rows) {
+      if (a.status_code !== null && a.status_code >= 200 && a.status_code < 300) {
+        deliveredSet.add(a.batch_index);
+      }
+      if (a.errors_json) {
+        try {
+          const parsed = JSON.parse(a.errors_json) as Array<{ row: number; msg: string }>;
+          for (const e of parsed) rowErrors.push(e);
+        } catch {
+          // ignore malformed errors_json
+        }
+      }
+    }
+
+    const last = rows.length > 0 ? rows[rows.length - 1]! : null;
+
+    return c.json({
+      upload_id: upload.id,
+      numeric_id: upload.numeric_id,
+      status: upload.status,
+      batch_count: upload.batch_count,
+      batches_delivered: deliveredSet.size,
+      latest_attempt: last
+        ? {
+            batch_index: last.batch_index,
+            attempt_number: last.attempt_number,
+            status_code: last.status_code,
+            response_body: last.response_body,
+          }
+        : null,
+      row_errors: rowErrors,
+      has_row_errors: rowErrors.length > 0,
+    });
+  } catch (err) {
+    console.error("DB error in GET upload status:", err);
+    return c.json({ error: "Failed to load upload status" }, 500);
+  }
+});
