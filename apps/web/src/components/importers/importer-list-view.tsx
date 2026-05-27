@@ -13,6 +13,7 @@ type Props = {
   importers: ImporterListItem[];
   showArchived: boolean;
   creating: boolean;
+  loading?: boolean;
   error?: string | null;
   onToggleArchived: (next: boolean) => void;
   onCreate: (name: string) => void;
@@ -30,6 +31,7 @@ export function ImporterListView({
   importers,
   showArchived,
   creating,
+  loading,
   error,
   onToggleArchived,
   onCreate,
@@ -92,7 +94,9 @@ export function ImporterListView({
         </div>
       )}
 
-      {importers.length === 0 ? (
+      {loading ? (
+        <p className="text-sm text-slate-500">Loading importers…</p>
+      ) : importers.length === 0 ? (
         <p className="text-sm text-slate-500">
           No importers yet — create your first importer above.
         </p>

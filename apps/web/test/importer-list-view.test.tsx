@@ -53,6 +53,23 @@ describe("ImporterListView", () => {
     );
   });
 
+  it("shows a loading line instead of the empty state while loading", () => {
+    render(
+      <ImporterListView
+        importers={[]}
+        showArchived={false}
+        creating={false}
+        loading={true}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    expect(screen.getByText(/loading importers/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/create your first importer/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no importers", () => {
     render(
       <ImporterListView
