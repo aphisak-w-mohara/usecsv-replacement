@@ -22,7 +22,7 @@ async function seed(): Promise<string> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(UPLOAD_BODY),
     })
-  ).json();
+  ).json<{ upload_id: string }>();
   await SELF.fetch(`https://example.com/api/uploads/${created.upload_id}/batches/1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

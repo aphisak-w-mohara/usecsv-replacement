@@ -156,7 +156,7 @@ describe("POST /api/uploads — idempotency", () => {
       body: JSON.stringify(VALID_BODY),
     });
     expect(first.status).toBe(201);
-    const firstBody = await first.json();
+    const firstBody = await first.json<{ upload_id: string; numeric_id: number }>();
 
     const second = await SELF.fetch("https://example.com/api/uploads", {
       method: "POST",
@@ -165,7 +165,7 @@ describe("POST /api/uploads — idempotency", () => {
     });
     // Idempotent replay returns 200 with the SAME upload, never a new 201.
     expect(second.status).toBe(200);
-    const secondBody = await second.json();
+    const secondBody = await second.json<{ upload_id: string; numeric_id: number }>();
     expect(secondBody.upload_id).toBe(firstBody.upload_id);
     expect(secondBody.numeric_id).toBe(firstBody.numeric_id);
 

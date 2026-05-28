@@ -20,7 +20,7 @@ async function createUpload(): Promise<{ upload_id: string; numeric_id: number }
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(UPLOAD_BODY),
   });
-  return res.json();
+  return res.json<{ upload_id: string; numeric_id: number }>();
 }
 
 describe("POST /api/uploads/:id/batches/:index", () => {

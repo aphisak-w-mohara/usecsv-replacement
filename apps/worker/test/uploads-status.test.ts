@@ -20,15 +20,25 @@ async function createUpload(): Promise<string> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(UPLOAD_BODY),
   });
-  return (await res.json()).upload_id;
+  return (await res.json<{ upload_id: string }>()).upload_id;
 }
+
+type StatusBody = {
+  upload_id: string;
+  status: string;
+  batch_count: number;
+  batches_delivered: number;
+  has_row_errors: boolean;
+  latest_attempt: { batch_index: number; attempt_number: number; status_code: number } | null;
+  row_errors: Array<{ row: number; msg: string }>;
+};
 
 describe("GET /api/uploads/:id", () => {
   it("reports pending with zero delivered when no attempts exist", async () => {
     const id = await createUpload();
     const res = await SELF.fetch(`https://example.com/api/uploads/${id}`);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json<StatusBody>();
     expect(body).toMatchObject({
       upload_id: id,
       status: "pending",
@@ -54,7 +64,7 @@ describe("GET /api/uploads/:id", () => {
     await env.DB.prepare("UPDATE uploads SET status = 'completed' WHERE id = ?").bind(id).run();
 
     const res = await SELF.fetch(`https://example.com/api/uploads/${id}`);
-    const body = await res.json();
+    const body = await res.json<StatusBody>();
     expect(body.status).toBe("completed");
     expect(body.batches_delivered).toBe(1);
     expect(body.has_row_errors).toBe(true);
