@@ -908,3 +908,167 @@ describe("PUT /api/importers/:importer_id/environments/:env_id", () => {
   });
 });
 
+describe("Webhook signing — enable / rotate / disable", () => {
+  async function ensureConfigured(envSlug: string, envId: string) {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO environments (id, project_id, slug, name, is_default, created_at)
+       VALUES (?, 'proj_evo', ?, ?, 0, unixepoch())`,
+    )
+      .bind(envId, envSlug, envSlug)
+      .run();
+    // Upsert importer_environment via the existing PUT route, so we don't have
+    // to know the row shape inside-out here.
+    await SELF.fetch(
+      `https://example.com/api/importers/imp_tenants/environments/${envId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ webhook_url: "https://example.com/h" }),
+      },
+    );
+  }
+
+  it("POST /signing enables signing, returns the secret once, and persists it", async () => {
+    await ensureConfigured("sig_enable", "env_evo_sig_enable");
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_enable/signing",
+      { method: "POST" },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      secret: string;
+      importer_environment: { webhook_signing_enabled: boolean; secret_set: boolean };
+    }>();
+    expect(body.secret).toMatch(/^[0-9a-f-]{16,}$/i);
+    expect(body.importer_environment.webhook_signing_enabled).toBe(true);
+    expect(body.importer_environment.secret_set).toBe(true);
+
+    const { env } = await import("cloudflare:test");
+    const row = await env.DB.prepare(
+      `SELECT webhook_secret, webhook_signing_enabled
+       FROM importer_environments
+       WHERE importer_id = 'imp_tenants' AND environment_id = 'env_evo_sig_enable'`,
+    ).first<{ webhook_secret: string; webhook_signing_enabled: number }>();
+    expect(row?.webhook_secret).toBe(body.secret);
+    expect(row?.webhook_signing_enabled).toBe(1);
+  });
+
+  it("POST /rotate-secret returns a new value distinct from the previous one", async () => {
+    await ensureConfigured("sig_rot_sec", "env_evo_sig_rot_sec");
+    const first = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_rot_sec/signing",
+      { method: "POST" },
+    );
+    const firstBody = await first.json<{ secret: string }>();
+
+    const rot = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_rot_sec/rotate-secret",
+      { method: "POST" },
+    );
+    expect(rot.status).toBe(200);
+    const rotBody = await rot.json<{ secret: string }>();
+    expect(rotBody.secret).not.toBe(firstBody.secret);
+  });
+
+  it("POST /rotate-secret returns 409 when signing is not enabled", async () => {
+    await ensureConfigured("sig_no_enable", "env_evo_sig_no_enable");
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_no_enable/rotate-secret",
+      { method: "POST" },
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("POST /rotate-key changes the public key; the old key no longer resolves", async () => {
+    await ensureConfigured("sig_rot_key", "env_evo_sig_rot_key");
+    const { env } = await import("cloudflare:test");
+    const before = await env.DB.prepare(
+      `SELECT key FROM importer_environments
+       WHERE importer_id = 'imp_tenants' AND environment_id = 'env_evo_sig_rot_key'`,
+    ).first<{ key: string }>();
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_rot_key/rotate-key",
+      { method: "POST" },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ importer_environment: { key: string } }>();
+    expect(body.importer_environment.key).not.toBe(before?.key);
+
+    const oldKeyMatch = await env.DB.prepare(
+      "SELECT id FROM importer_environments WHERE key = ?",
+    )
+      .bind(before!.key)
+      .first<{ id: string }>();
+    expect(oldKeyMatch).toBeNull();
+  });
+
+  it("DELETE /signing disables signing and clears the secret", async () => {
+    await ensureConfigured("sig_disable", "env_evo_sig_disable");
+    await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_disable/signing",
+      { method: "POST" },
+    );
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_disable/signing",
+      { method: "DELETE" },
+    );
+    expect(res.status).toBe(204);
+
+    const { env } = await import("cloudflare:test");
+    const row = await env.DB.prepare(
+      `SELECT webhook_secret, webhook_signing_enabled
+       FROM importer_environments
+       WHERE importer_id = 'imp_tenants' AND environment_id = 'env_evo_sig_disable'`,
+    ).first<{ webhook_secret: string | null; webhook_signing_enabled: number }>();
+    expect(row?.webhook_secret).toBeNull();
+    expect(row?.webhook_signing_enabled).toBe(0);
+  });
+
+  it("GET /environments never returns the raw webhook_secret", async () => {
+    await ensureConfigured("sig_get_safety", "env_evo_sig_safety");
+    await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_safety/signing",
+      { method: "POST" },
+    );
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments",
+    );
+    const body = await res.text();
+    expect(body).not.toMatch(/webhook_secret"\s*:\s*"[a-f0-9-]/i);
+  });
+
+  it("returns 404 when the importer belongs to a different project (IDOR)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_sig', 'proj_foreign', 'FI Sig', unixepoch(), unixepoch())`,
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO environments (id, project_id, slug, name, is_default, created_at)
+         VALUES ('env_foreign_sig', 'proj_foreign', 'fsig', 'FSig', 0, unixepoch())`,
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importer_environments
+           (id, importer_id, environment_id, key, webhook_url)
+         VALUES ('impenv_foreign_sig', 'imp_foreign_sig', 'env_foreign_sig', 'foreign-key', 'https://foreign.example.com')`,
+      ),
+    ]);
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_foreign_sig/environments/env_foreign_sig/signing",
+      { method: "POST" },
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+
