@@ -37,6 +37,9 @@ export function EnvironmentsTab({ importerId }: Props) {
     let cancelled = false;
     setLoadError(null);
     setEnvs(null);
+    // Reset selection so a previous importer's env id never bleeds into this load.
+    // The `active` fallback below also handles a stale id, but resetting keeps state honest.
+    setActiveEnvId(null);
 
     async function load() {
       try {
@@ -46,11 +49,7 @@ export function EnvironmentsTab({ importerId }: Props) {
         if (!res.ok) throw new Error(`Failed to load environments: ${res.status}`);
         const data = await res.json();
         if (cancelled) return;
-        const list = data.environments as EnvRow[];
-        setEnvs(list);
-        if (list.length > 0 && activeEnvId === null) {
-          setActiveEnvId(list[0]!.env_id);
-        }
+        setEnvs(data.environments as EnvRow[]);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Unknown error");
       }
@@ -60,7 +59,6 @@ export function EnvironmentsTab({ importerId }: Props) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importerId]);
 
   if (loadError) {
