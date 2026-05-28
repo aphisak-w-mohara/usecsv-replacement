@@ -79,6 +79,14 @@ function shapeColumn(row: ColumnFullRow) {
   };
 }
 
+// 32 random bytes → 64 hex chars → 256 bits of entropy. Used for HMAC webhook
+// secrets where the prior `crypto.randomUUID()` (122 bits) was just below the
+// 128-bit security floor.
+function generateWebhookSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 type ImporterListRow = {
   id: string;
   name: string;
@@ -882,7 +890,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
       );
       if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
-      const secret = crypto.randomUUID();
+      const secret = generateWebhookSecret();
       await c.env.DB.prepare(
         `UPDATE importer_environments
            SET webhook_signing_enabled = 1, webhook_secret = ?
@@ -914,7 +922,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         return c.json({ error: "Enable signing before rotating the secret" }, 409);
       }
 
-      const secret = crypto.randomUUID();
+      const secret = generateWebhookSecret();
       await c.env.DB.prepare(
         "UPDATE importer_environments SET webhook_secret = ? WHERE id = ?",
       )

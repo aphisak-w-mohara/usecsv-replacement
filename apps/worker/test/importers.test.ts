@@ -941,7 +941,8 @@ describe("Webhook signing — enable / rotate / disable", () => {
       secret: string;
       importer_environment: { webhook_signing_enabled: boolean; secret_set: boolean };
     }>();
-    expect(body.secret).toMatch(/^[0-9a-f-]{16,}$/i);
+    // 64 hex chars = 256 bits of entropy (32 random bytes hex-encoded).
+    expect(body.secret).toMatch(/^[0-9a-f]{64}$/i);
     expect(body.importer_environment.webhook_signing_enabled).toBe(true);
     expect(body.importer_environment.secret_set).toBe(true);
 
