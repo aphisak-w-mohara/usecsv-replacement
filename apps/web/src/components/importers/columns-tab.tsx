@@ -106,6 +106,11 @@ export function ColumnsTab({ importerId }: Props) {
   }
 
   async function applyReorder(orderedIds: string[]) {
+    // Guard against concurrent reorders: ▲/▼ buttons are wired to disable on
+    // `saving=true`, but a rapid double-click could still queue a second call
+    // before this one's optimistic update lands. Early-return if one is in flight.
+    if (saving) return;
+
     const prev = columns ?? [];
     // Optimistic local update.
     const byId = new Map(prev.map((c) => [c.id, c]));
@@ -116,6 +121,7 @@ export function ColumnsTab({ importerId }: Props) {
       })
       .filter((c): c is ColumnRow => c !== null);
     setColumns(reordered);
+    setSaving(true);
 
     try {
       const res = await api.api.importers[":importer_id"].columns.order.$put({
@@ -130,10 +136,13 @@ export function ColumnsTab({ importerId }: Props) {
     } catch (err) {
       console.error("Reorder failed, reverting:", err);
       setColumns(prev);
+    } finally {
+      setSaving(false);
     }
   }
 
   function moveColumn(columnId: string, direction: -1 | 1) {
+    if (saving) return;
     const cols = columns ?? [];
     const idx = cols.findIndex((c) => c.id === columnId);
     if (idx === -1) return;
@@ -145,6 +154,7 @@ export function ColumnsTab({ importerId }: Props) {
   }
 
   function handleDrop(draggedId: string, droppedOnId: string) {
+    if (saving) return;
     if (draggedId === droppedOnId) return;
     const cols = columns ?? [];
     const from = cols.findIndex((c) => c.id === draggedId);
