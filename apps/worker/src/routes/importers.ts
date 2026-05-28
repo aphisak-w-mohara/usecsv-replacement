@@ -872,78 +872,118 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
   .post("/:importer_id/environments/:env_id/signing", async (c) => {
     const importerId = c.req.param("importer_id");
     const envId = c.req.param("env_id");
-    const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
-    if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
-    const secret = crypto.randomUUID();
-    await c.env.DB.prepare(
-      `UPDATE importer_environments
-         SET webhook_signing_enabled = 1, webhook_secret = ?
-       WHERE id = ?`,
-    )
-      .bind(secret, ie.id)
-      .run();
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
-    const fresh = await readImporterEnv(c.env.DB, ie.id);
-    return c.json({ secret, importer_environment: shapeImporterEnv(fresh!) });
+      const secret = crypto.randomUUID();
+      await c.env.DB.prepare(
+        `UPDATE importer_environments
+           SET webhook_signing_enabled = 1, webhook_secret = ?
+         WHERE id = ?`,
+      )
+        .bind(secret, ie.id)
+        .run();
+
+      const fresh = await readImporterEnv(c.env.DB, ie.id);
+      return c.json({ secret, importer_environment: shapeImporterEnv(fresh!) });
+    } catch (err) {
+      console.error("DB error in POST /signing:", err);
+      return c.json({ error: "Database error enabling signing" }, 500);
+    }
   })
   .post("/:importer_id/environments/:env_id/rotate-secret", async (c) => {
     const importerId = c.req.param("importer_id");
     const envId = c.req.param("env_id");
-    const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
-    if (!ie) return c.json({ error: "Importer environment not found" }, 404);
-    if (!ie.webhook_signing_enabled) {
-      return c.json({ error: "Enable signing before rotating the secret" }, 409);
+
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
+      if (!ie.webhook_signing_enabled) {
+        return c.json({ error: "Enable signing before rotating the secret" }, 409);
+      }
+
+      const secret = crypto.randomUUID();
+      await c.env.DB.prepare(
+        "UPDATE importer_environments SET webhook_secret = ? WHERE id = ?",
+      )
+        .bind(secret, ie.id)
+        .run();
+
+      const fresh = await readImporterEnv(c.env.DB, ie.id);
+      return c.json({ secret, importer_environment: shapeImporterEnv(fresh!) });
+    } catch (err) {
+      console.error("DB error in POST /rotate-secret:", err);
+      return c.json({ error: "Database error rotating secret" }, 500);
     }
-
-    const secret = crypto.randomUUID();
-    await c.env.DB.prepare(
-      "UPDATE importer_environments SET webhook_secret = ? WHERE id = ?",
-    )
-      .bind(secret, ie.id)
-      .run();
-
-    const fresh = await readImporterEnv(c.env.DB, ie.id);
-    return c.json({ secret, importer_environment: shapeImporterEnv(fresh!) });
   })
   .post("/:importer_id/environments/:env_id/rotate-key", async (c) => {
     const importerId = c.req.param("importer_id");
     const envId = c.req.param("env_id");
-    const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
-    if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
-    const newKey = crypto.randomUUID();
     try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
+
+      const newKey = crypto.randomUUID();
       await c.env.DB.prepare(
         "UPDATE importer_environments SET key = ? WHERE id = ?",
       )
         .bind(newKey, ie.id)
         .run();
+
+      const fresh = await readImporterEnv(c.env.DB, ie.id);
+      return c.json({ importer_environment: shapeImporterEnv(fresh!) });
     } catch (err) {
       if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
         return c.json({ error: "Key collision; try again" }, 500);
       }
-      throw err;
+      console.error("DB error in POST /rotate-key:", err);
+      return c.json({ error: "Database error rotating key" }, 500);
     }
-
-    const fresh = await readImporterEnv(c.env.DB, ie.id);
-    return c.json({ importer_environment: shapeImporterEnv(fresh!) });
   })
   .delete("/:importer_id/environments/:env_id/signing", async (c) => {
     const importerId = c.req.param("importer_id");
     const envId = c.req.param("env_id");
-    const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
-    if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
-    await c.env.DB.prepare(
-      `UPDATE importer_environments
-         SET webhook_signing_enabled = 0, webhook_secret = NULL
-       WHERE id = ?`,
-    )
-      .bind(ie.id)
-      .run();
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
-    return c.body(null, 204);
+      await c.env.DB.prepare(
+        `UPDATE importer_environments
+           SET webhook_signing_enabled = 0, webhook_secret = NULL
+         WHERE id = ?`,
+      )
+        .bind(ie.id)
+        .run();
+
+      return c.body(null, 204);
+    } catch (err) {
+      console.error("DB error in DELETE /signing:", err);
+      return c.json({ error: "Database error disabling signing" }, 500);
+    }
   });
 
 type ImporterEnvFullRow = {
