@@ -256,3 +256,113 @@ describe("GET /api/importers/:importer_id", () => {
     expect(body.importer.archived).toBe(true);
   });
 });
+
+describe("PATCH /api/importers/:importer_id", () => {
+  async function patch(id: string, body: { name?: string; archived?: boolean }) {
+    return SELF.fetch(`https://example.com/api/importers/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("renames the importer, bumps updated_at, returns the updated row", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_rename_target', 'proj_evo', 'Rename Me', unixepoch() - 5, unixepoch() - 5)`,
+    ).run();
+    const before = await env.DB.prepare(
+      "SELECT updated_at FROM importers WHERE id = 'imp_rename_target'",
+    ).first<{ updated_at: number }>();
+    expect(before?.updated_at).toBeDefined();
+
+    // Force a clock-tick so updated_at can change.
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const res = await patch("imp_rename_target", { name: "Rename Me v2" });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ importer: { name: string; updated_at: number } }>();
+    expect(body.importer.name).toBe("Rename Me v2");
+    expect(body.importer.updated_at).toBeGreaterThan(before!.updated_at);
+  });
+
+  it("trims the new name and rejects empty/whitespace with 400", async () => {
+    const res = await patch("imp_tenants", { name: "   " });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a colliding name (case-insensitive) within the project with 409", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_other_pat', 'proj_evo', 'Other Importer Pat', unixepoch(), unixepoch())`,
+    ).run();
+
+    const res = await patch("imp_other_pat", { name: "tenants" });
+    expect(res.status).toBe(409);
+  });
+
+  it("archives the importer and clears archive on toggle", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_arch_target', 'proj_evo', 'Archive Me', unixepoch(), unixepoch())`,
+    ).run();
+
+    const archRes = await patch("imp_arch_target", { archived: true });
+    expect(archRes.status).toBe(200);
+    const archBody = await archRes.json<{ importer: { archived: boolean } }>();
+    expect(archBody.importer.archived).toBe(true);
+
+    const dbRow = await env.DB.prepare(
+      "SELECT archived_at FROM importers WHERE id = 'imp_arch_target'",
+    ).first<{ archived_at: number | null }>();
+    expect(dbRow?.archived_at).not.toBeNull();
+
+    const unRes = await patch("imp_arch_target", { archived: false });
+    expect(unRes.status).toBe(200);
+    const unBody = await unRes.json<{ importer: { archived: boolean } }>();
+    expect(unBody.importer.archived).toBe(false);
+
+    const dbRow2 = await env.DB.prepare(
+      "SELECT archived_at FROM importers WHERE id = 'imp_arch_target'",
+    ).first<{ archived_at: number | null }>();
+    expect(dbRow2?.archived_at).toBeNull();
+  });
+
+  it("renames and archives in one call (both fields together)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_combo', 'proj_evo', 'Combo Original', unixepoch(), unixepoch())`,
+    ).run();
+
+    const res = await patch("imp_combo", { name: "Combo Renamed", archived: true });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ importer: { name: string; archived: boolean } }>();
+    expect(body.importer.name).toBe("Combo Renamed");
+    expect(body.importer.archived).toBe(true);
+  });
+
+  it("empty body is a no-op 200 (no fields supplied)", async () => {
+    const res = await patch("imp_tenants", {});
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_pat', 'proj_foreign', 'Foreign Importer Pat', unixepoch(), unixepoch())`,
+      ),
+    ]);
+
+    const res = await patch("imp_foreign_pat", { name: "Renamed Foreign" });
+    expect(res.status).toBe(404);
+  });
+});
