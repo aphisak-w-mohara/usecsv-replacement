@@ -177,3 +177,26 @@ describe("POST /api/uploads — idempotency", () => {
     expect(count?.n).toBe(1);
   });
 });
+
+describe("POST /api/uploads — archived importer guard", () => {
+  it("returns 404 when the importer behind the env is archived", async () => {
+    // Archive the seeded Tenants importer (used by impenv_tenants_staging).
+    await env.DB.prepare(
+      "UPDATE importers SET archived_at = unixepoch() WHERE id = 'imp_tenants'",
+    ).run();
+
+    try {
+      const res = await SELF.fetch("https://example.com/api/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(VALID_BODY),
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      // Restore for downstream tests
+      await env.DB.prepare(
+        "UPDATE importers SET archived_at = NULL WHERE id = 'imp_tenants'",
+      ).run();
+    }
+  });
+});
