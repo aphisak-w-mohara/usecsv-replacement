@@ -678,4 +678,194 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         return c.json({ error: "Database error reordering columns" }, 500);
       }
     },
+  )
+  .get("/:importer_id/environments", async (c) => {
+    const importerId = c.req.param("importer_id");
+    const session = c.get("session");
+
+    try {
+      const importer = await c.env.DB.prepare(
+        "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+      )
+        .bind(importerId, session.project_id)
+        .first<{ id: string }>();
+      if (!importer) {
+        return c.json({ error: "Importer not found" }, 404);
+      }
+
+      const result = await c.env.DB.prepare(
+        `SELECT e.id AS env_id, e.slug AS env_slug, e.name AS env_name, e.is_default,
+                ie.id AS ie_id, ie.key, ie.webhook_url, ie.batch_size,
+                ie.filter_invalid_rows, ie.include_unmatched_columns,
+                ie.webhook_signing_enabled, ie.webhook_secret
+         FROM environments e
+         LEFT JOIN importer_environments ie
+           ON ie.environment_id = e.id AND ie.importer_id = ?
+         WHERE e.project_id = ?
+         ORDER BY e.is_default DESC, e.slug ASC`,
+      )
+        .bind(importerId, session.project_id)
+        .all<{
+          env_id: string;
+          env_slug: string;
+          env_name: string;
+          is_default: number;
+          ie_id: string | null;
+          key: string | null;
+          webhook_url: string | null;
+          batch_size: number | null;
+          filter_invalid_rows: number | null;
+          include_unmatched_columns: number | null;
+          webhook_signing_enabled: number | null;
+          webhook_secret: string | null;
+        }>();
+
+      const environments = result.results.map((row) => ({
+        env_id: row.env_id,
+        env_slug: row.env_slug,
+        env_name: row.env_name,
+        is_default: Boolean(row.is_default),
+        configured: row.ie_id !== null,
+        importer_environment:
+          row.ie_id === null
+            ? null
+            : {
+                id: row.ie_id,
+                key: row.key!,
+                webhook_url: row.webhook_url!,
+                batch_size: row.batch_size!,
+                filter_invalid_rows: Boolean(row.filter_invalid_rows),
+                include_unmatched_columns: Boolean(row.include_unmatched_columns),
+                webhook_signing_enabled: Boolean(row.webhook_signing_enabled),
+                secret_set: row.webhook_secret !== null,
+              },
+      }));
+
+      return c.json({ environments });
+    } catch (err) {
+      console.error("DB error in GET /api/importers/:id/environments:", err);
+      return c.json({ error: "Database error listing environments" }, 500);
+    }
+  })
+  .put(
+    "/:importer_id/environments/:env_id",
+    zValidator(
+      "json",
+      z.object({
+        webhook_url: z
+          .string()
+          .min(1)
+          .refine((u) => /^https?:\/\//i.test(u), "must be http(s)"),
+        batch_size: z.number().int().min(1).max(50000).optional(),
+        filter_invalid_rows: z.boolean().optional(),
+        include_unmatched_columns: z.boolean().optional(),
+      }),
+    ),
+    async (c) => {
+      const importerId = c.req.param("importer_id");
+      const envId = c.req.param("env_id");
+      const session = c.get("session");
+      const body = c.req.valid("json");
+
+      try {
+        const importer = await c.env.DB.prepare(
+          "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+        )
+          .bind(importerId, session.project_id)
+          .first<{ id: string }>();
+        if (!importer) {
+          return c.json({ error: "Importer not found" }, 404);
+        }
+
+        const envRow = await c.env.DB.prepare(
+          "SELECT id FROM environments WHERE id = ? AND project_id = ?",
+        )
+          .bind(envId, session.project_id)
+          .first<{ id: string }>();
+        if (!envRow) {
+          return c.json({ error: "Environment not found" }, 404);
+        }
+
+        const existing = await c.env.DB.prepare(
+          "SELECT id, key FROM importer_environments WHERE importer_id = ? AND environment_id = ?",
+        )
+          .bind(importerId, envId)
+          .first<{ id: string; key: string }>();
+
+        const batchSize = body.batch_size ?? 1000;
+        const filterInvalid = body.filter_invalid_rows ? 1 : 0;
+        const includeUnmatched = body.include_unmatched_columns ? 1 : 0;
+
+        if (existing) {
+          await c.env.DB.prepare(
+            `UPDATE importer_environments
+               SET webhook_url = ?, batch_size = ?,
+                   filter_invalid_rows = ?, include_unmatched_columns = ?
+             WHERE id = ?`,
+          )
+            .bind(body.webhook_url, batchSize, filterInvalid, includeUnmatched, existing.id)
+            .run();
+        } else {
+          const id = generateId("impenv");
+          const key = crypto.randomUUID();
+          await c.env.DB.prepare(
+            `INSERT INTO importer_environments
+               (id, importer_id, environment_id, key, webhook_url, batch_size,
+                filter_invalid_rows, include_unmatched_columns)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+            .bind(
+              id,
+              importerId,
+              envId,
+              key,
+              body.webhook_url,
+              batchSize,
+              filterInvalid,
+              includeUnmatched,
+            )
+            .run();
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        await c.env.DB.prepare("UPDATE importers SET updated_at = ? WHERE id = ?")
+          .bind(now, importerId)
+          .run();
+
+        const row = await c.env.DB.prepare(
+          `SELECT id, key, webhook_url, batch_size,
+                  filter_invalid_rows, include_unmatched_columns,
+                  webhook_signing_enabled, webhook_secret
+           FROM importer_environments
+           WHERE importer_id = ? AND environment_id = ?`,
+        )
+          .bind(importerId, envId)
+          .first<{
+            id: string;
+            key: string;
+            webhook_url: string;
+            batch_size: number;
+            filter_invalid_rows: number;
+            include_unmatched_columns: number;
+            webhook_signing_enabled: number;
+            webhook_secret: string | null;
+          }>();
+
+        return c.json({
+          importer_environment: {
+            id: row!.id,
+            key: row!.key,
+            webhook_url: row!.webhook_url,
+            batch_size: row!.batch_size,
+            filter_invalid_rows: Boolean(row!.filter_invalid_rows),
+            include_unmatched_columns: Boolean(row!.include_unmatched_columns),
+            webhook_signing_enabled: Boolean(row!.webhook_signing_enabled),
+            secret_set: row!.webhook_secret !== null,
+          },
+        });
+      } catch (err) {
+        console.error("DB error in PUT /api/importers/:id/environments/:env_id:", err);
+        return c.json({ error: "Database error saving env config" }, 500);
+      }
+    },
   );
