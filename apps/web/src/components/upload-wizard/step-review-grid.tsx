@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ImporterColumn } from "../../lib/fuzzy-match";
@@ -92,7 +92,8 @@ export function StepReviewGrid({
   // re-runs validateCell for ONLY the edited cell, and patches the cache +
   // counts incrementally — no full recompute.
   // Story #6 Task 2 will wire EditableCell to call this.
-  function _commitCellEdit(rowIdx: number, columnName: string, newValue: string) {
+  const commitCellEdit = useCallback(
+    (rowIdx: number, columnName: string, newValue: string) => {
     const column = importerColumns.find((c) => c.name === columnName);
     if (!column) return;
     const fileHeader = matched[columnName];
@@ -108,7 +109,7 @@ export function StepReviewGrid({
 
     setValidation((prev) => {
       // Read oldResult from the prev state, not the closure — protects against
-      // stale reads if React ever batches multiple _commitCellEdit calls in one event.
+      // stale reads if React ever batches multiple commitCellEdit calls in one event.
       const oldResult = prev.cache.get(rowIdx)?.get(columnName);
 
       const nextCache: ValidationCache = new Map(prev.cache);
@@ -148,50 +149,57 @@ export function StepReviewGrid({
         errorRowIndices: nextErrorRows,
       };
     });
-  }
+    },
+    [importerColumns, matched],
+  );
   const [showOnlyErrors, setShowOnlyErrors] = useState(false);
 
-  const tableRows: RowWithMeta[] = [];
-  rows.forEach((row, rowIdx) => {
-    const hasError = errorRowIndices.has(rowIdx);
-    if (showOnlyErrors && !hasError) return;
-    tableRows.push({
-      __rowIndex: rowIdx + 1,
-      __hasError: hasError,
-      __original: row,
+  // Memoize derived data so TanStack Table / Virtual don't see fresh references
+  // every render — passing new data/columns on each render kicks their internal
+  // measurement loops into an infinite cycle under React 19 + StrictMode (caught
+  // driving the wizard locally; manifested as a hard freeze on cell-edit commit).
+  const tableRows = useMemo<RowWithMeta[]>(() => {
+    const out: RowWithMeta[] = [];
+    rows.forEach((row, rowIdx) => {
+      const hasError = errorRowIndices.has(rowIdx);
+      if (showOnlyErrors && !hasError) return;
+      out.push({ __rowIndex: rowIdx + 1, __hasError: hasError, __original: row });
     });
-  });
+    return out;
+  }, [rows, errorRowIndices, showOnlyErrors]);
 
-  const mappedColumns = importerColumns.filter((c) => matched[c.name]);
-
-  const columns: ColumnDef<RowWithMeta>[] = [
-    {
-      id: "__rowIndex",
-      header: "#",
-      size: 60,
-      cell: (info) => <span className="text-slate-400">{info.row.original.__rowIndex}</span>,
-    },
-  ];
-  for (const col of mappedColumns) {
-    columns.push({
-      id: col.name,
-      header: col.display_name,
-      size: 160,
-      accessorFn: (row) => row.__original[matched[col.name]!] ?? "",
-      cell: (info) => {
-        const rowIdx = info.row.original.__rowIndex - 1;
-        const result = cache.get(rowIdx)?.get(col.name);
-        const value = info.getValue() as string;
-        return (
-          <EditableCell
-            value={value}
-            validation={result}
-            onCommit={(newValue) => _commitCellEdit(rowIdx, col.name, newValue)}
-          />
-        );
+  const columns = useMemo<ColumnDef<RowWithMeta>[]>(() => {
+    const mappedColumns = importerColumns.filter((c) => matched[c.name]);
+    const cols: ColumnDef<RowWithMeta>[] = [
+      {
+        id: "__rowIndex",
+        header: "#",
+        size: 60,
+        cell: (info) => <span className="text-slate-400">{info.row.original.__rowIndex}</span>,
       },
-    });
-  }
+    ];
+    for (const col of mappedColumns) {
+      cols.push({
+        id: col.name,
+        header: col.display_name,
+        size: 160,
+        accessorFn: (row) => row.__original[matched[col.name]!] ?? "",
+        cell: (info) => {
+          const rowIdx = info.row.original.__rowIndex - 1;
+          const result = cache.get(rowIdx)?.get(col.name);
+          const value = info.getValue() as string;
+          return (
+            <EditableCell
+              value={value}
+              validation={result}
+              onCommit={(newValue) => commitCellEdit(rowIdx, col.name, newValue)}
+            />
+          );
+        },
+      });
+    }
+    return cols;
+  }, [importerColumns, matched, cache, commitCellEdit]);
 
   const table = useReactTable({
     data: tableRows,
@@ -201,10 +209,12 @@ export function StepReviewGrid({
 
   const parentRef = useRef<HTMLDivElement>(null);
   const shouldVirtualize = tableRows.length > VIRTUALIZE_THRESHOLD;
+  const getScrollElement = useCallback(() => parentRef.current, []);
+  const estimateSize = useCallback(() => 30, []);
   const virtualizer = useVirtualizer({
     count: shouldVirtualize ? tableRows.length : 0,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 30,
+    getScrollElement,
+    estimateSize,
     overscan: 10,
   });
   const virtualItems = shouldVirtualize ? virtualizer.getVirtualItems() : null;

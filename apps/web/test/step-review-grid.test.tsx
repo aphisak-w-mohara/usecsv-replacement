@@ -151,6 +151,35 @@ describe("StepReviewGrid", () => {
     expect(screen.queryByText("not-an-email")).not.toBeInTheDocument();
   });
 
+  it("editing the same cell twice in a row stays responsive (no render loop)", () => {
+    // Regression for a real freeze caught driving the wizard locally: when
+    // `data`/`columns` references churn every render, TanStack Table + Virtual
+    // can lock the main thread in an internal measurement cycle under React 19
+    // + StrictMode. Memoizing those derived arrays fixes it; this test makes
+    // sure we never go back. (If the loop reappears, vitest's worker hangs and
+    // hits the suite timeout instead of asserting cleanly.)
+    const SINGLE_ROW = [
+      { "First name": "John", "Last name": "Doe", "Customer Email": "john.doe@example.com" },
+    ];
+    renderGrid({ rows: SINGLE_ROW });
+
+    // 1st edit: valid → invalid
+    fireEvent.click(screen.getByText("john.doe@example.com"));
+    let input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "d" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByText(/1 error/i)).toBeInTheDocument();
+
+    // 2nd edit on the SAME cell: invalid → valid (cell now has the ⚠ prefix
+    // when in error state, so target it by its validation title instead)
+    fireEvent.click(screen.getByTitle(/not a valid email/i));
+    input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "fixed@example.com" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByText(/0 errors/i)).toBeInTheDocument();
+    expect(screen.getByText("fixed@example.com")).toBeInTheDocument();
+  });
+
   it("removes a row from 'show only errors' view after its error is fixed", () => {
     const ONE_BAD_EMAIL_ROW = [
       { "First name": "Alice", "Last name": "Smith", "Customer Email": "alice@example.com" },
