@@ -27,6 +27,7 @@ export function ColumnsTab({ importerId }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +107,7 @@ export function ColumnsTab({ importerId }: Props) {
 
   async function handleDelete(columnId: string) {
     setSaving(true);
+    setDeleteError(null);
     try {
       const res = await api.api.importers[":importer_id"].columns[":column_id"].$delete({
         param: { importer_id: importerId, column_id: columnId },
@@ -117,6 +119,7 @@ export function ColumnsTab({ importerId }: Props) {
       setPendingDeleteId(null);
     } catch (err) {
       console.error(err);
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete column");
     } finally {
       setSaving(false);
     }
@@ -241,18 +244,28 @@ export function ColumnsTab({ importerId }: Props) {
               Historical uploads keep their original column snapshot, but new uploads will no longer
               include this column.
             </p>
+            {deleteError && (
+              <p role="alert" className="text-sm text-red-700">
+                {deleteError}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setPendingDeleteId(null)}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+                onClick={() => {
+                  setPendingDeleteId(null);
+                  setDeleteError(null);
+                }}
+                disabled={saving}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void handleDelete(pendingDeleteId)}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white"
+                disabled={saving}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 Remove column
               </button>
