@@ -9,6 +9,7 @@ import {
   type GeneralTabImporter,
 } from "../../../components/importers/importer-general-tab";
 import { ColumnsTab } from "../../../components/importers/columns-tab";
+import { EnvironmentsTab } from "../../../components/importers/environments-tab";
 import { api } from "../../../lib/api";
 
 export const Route = createFileRoute("/_authed/admin/importers/$id")({
@@ -141,11 +142,7 @@ function ImporterDetailRoute() {
           if (tab === "columns") {
             return <ColumnsTab importerId={importer.id} />;
           }
-          return (
-            <p className="text-sm text-slate-500">
-              Per-environment delivery config lands in <strong>Story #18</strong>.
-            </p>
-          );
+          return <EnvironmentsTab importerId={importer.id} />;
         }}
       />
     </div>
