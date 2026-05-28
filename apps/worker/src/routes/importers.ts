@@ -222,13 +222,17 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
             .run();
         }
 
+        // Project-scoped re-fetch (defense-in-depth) — mirrors every other
+        // importer read in this file. If the existence check above passed and
+        // the UPDATE succeeded but this returns null, something has gone wrong
+        // mid-request (concurrent delete) — surface a 500.
         const row = await c.env.DB.prepare(
           `SELECT i.id, i.name, i.archived_at, i.updated_at,
                   (SELECT COUNT(*) FROM importer_columns ic WHERE ic.importer_id = i.id) AS column_count,
                   (SELECT COUNT(*) FROM importer_environments ie WHERE ie.importer_id = i.id) AS env_count
-           FROM importers i WHERE i.id = ?`,
+           FROM importers i WHERE i.id = ? AND i.project_id = ?`,
         )
-          .bind(importerId)
+          .bind(importerId, session.project_id)
           .first<{
             id: string;
             name: string;
@@ -238,14 +242,18 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
             env_count: number;
           }>();
 
+        if (!row) {
+          return c.json({ error: "Importer disappeared during update" }, 500);
+        }
+
         return c.json({
           importer: {
-            id: row!.id,
-            name: row!.name,
-            column_count: row!.column_count,
-            env_count: row!.env_count,
-            archived: row!.archived_at !== null,
-            updated_at: row!.updated_at,
+            id: row.id,
+            name: row.name,
+            column_count: row.column_count,
+            env_count: row.env_count,
+            archived: row.archived_at !== null,
+            updated_at: row.updated_at,
           },
         });
       } catch (err) {
