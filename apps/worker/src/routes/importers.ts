@@ -591,4 +591,91 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
       console.error("DB error in DELETE /api/importers/:id/columns/:column_id:", err);
       return c.json({ error: "Database error deleting column" }, 500);
     }
-  });
+  })
+  .put(
+    "/:importer_id/columns/order",
+    zValidator(
+      "json",
+      z.object({ ordered_ids: z.array(z.string()).min(1) }),
+    ),
+    async (c) => {
+      const importerId = c.req.param("importer_id");
+      const session = c.get("session");
+      const { ordered_ids } = c.req.valid("json");
+
+      // Reject duplicates up-front for a clean 400.
+      if (new Set(ordered_ids).size !== ordered_ids.length) {
+        return c.json({ error: "Duplicate column ids in ordered_ids" }, 400);
+      }
+
+      try {
+        const importer = await c.env.DB.prepare(
+          "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+        )
+          .bind(importerId, session.project_id)
+          .first<{ id: string }>();
+        if (!importer) {
+          return c.json({ error: "Importer not found" }, 404);
+        }
+
+        const existing = await c.env.DB.prepare(
+          "SELECT id FROM importer_columns WHERE importer_id = ?",
+        )
+          .bind(importerId)
+          .all<{ id: string }>();
+        const existingIds = new Set(existing.results.map((r) => r.id));
+
+        if (existingIds.size !== ordered_ids.length) {
+          return c.json(
+            {
+              error: `ordered_ids must contain exactly the ${existingIds.size} current column id(s); got ${ordered_ids.length}`,
+            },
+            400,
+          );
+        }
+        for (const id of ordered_ids) {
+          if (!existingIds.has(id)) {
+            return c.json({ error: `Unknown column id: ${id}` }, 400);
+          }
+        }
+
+        // Two-pass batch to avoid UNIQUE(importer_id, position) collisions:
+        // first move every row to a negative temp slot, then to its final slot.
+        const tempStmts = ordered_ids.map((id, i) =>
+          c.env.DB.prepare(
+            "UPDATE importer_columns SET position = ? WHERE id = ? AND importer_id = ?",
+          ).bind(-1 - i, id, importerId),
+        );
+        const finalStmts = ordered_ids.map((id, i) =>
+          c.env.DB.prepare(
+            "UPDATE importer_columns SET position = ? WHERE id = ? AND importer_id = ?",
+          ).bind(i + 1, id, importerId),
+        );
+        await c.env.DB.batch([...tempStmts, ...finalStmts]);
+
+        const now = Math.floor(Date.now() / 1000);
+        await c.env.DB.prepare("UPDATE importers SET updated_at = ? WHERE id = ?")
+          .bind(now, importerId)
+          .run();
+
+        const result = await c.env.DB.prepare(
+          `SELECT id, position, name, display_name, description, example,
+                  must_be_matched, value_cannot_be_blank,
+                  validation_type, validation_format, custom_error_message
+           FROM importer_columns
+           WHERE importer_id = ?
+           ORDER BY position ASC`,
+        )
+          .bind(importerId)
+          .all<ColumnFullRow>();
+
+        return c.json({
+          importer_id: importerId,
+          columns: result.results.map(shapeColumn),
+        });
+      } catch (err) {
+        console.error("DB error in PUT /api/importers/:id/columns/order:", err);
+        return c.json({ error: "Database error reordering columns" }, 500);
+      }
+    },
+  );
