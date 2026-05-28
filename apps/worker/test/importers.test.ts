@@ -727,3 +727,184 @@ describe("PUT /api/importers/:importer_id/columns/order", () => {
   });
 });
 
+describe("GET /api/importers/:importer_id/environments", () => {
+  it("returns one entry per project env, configured-or-not", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO environments (id, project_id, slug, name, is_default, created_at)
+       VALUES ('env_evo_uat', 'proj_evo', 'uat', 'UAT', 0, unixepoch())`,
+    ).run();
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments",
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      environments: {
+        env_id: string;
+        env_slug: string;
+        configured: boolean;
+        importer_environment: { key: string; webhook_url: string } | null;
+      }[];
+    }>();
+
+    const staging = body.environments.find((e) => e.env_slug === "staging");
+    expect(staging).toBeDefined();
+    expect(staging!.configured).toBe(true);
+    expect(staging!.importer_environment?.key).toBe(
+      "82b18e5e-6412-4102-901a-ce3c05d71460",
+    );
+
+    const uat = body.environments.find((e) => e.env_slug === "uat");
+    expect(uat).toBeDefined();
+    expect(uat!.configured).toBe(false);
+    expect(uat!.importer_environment).toBeNull();
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_env', 'proj_foreign', 'FI Env', unixepoch(), unixepoch())`,
+      ),
+    ]);
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_foreign_env/environments",
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PUT /api/importers/:importer_id/environments/:env_id", () => {
+  async function put(importerId: string, envId: string, body: unknown) {
+    return SELF.fetch(
+      `https://example.com/api/importers/${importerId}/environments/${envId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+  }
+
+  it("creates a new importer_environment on first call with a server-generated key", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO environments (id, project_id, slug, name, is_default, created_at)
+       VALUES ('env_evo_prod', 'proj_evo', 'production', 'Production', 0, unixepoch())`,
+    ).run();
+
+    const res = await put("imp_tenants", "env_evo_prod", {
+      webhook_url: "https://example.com/hooks/prod",
+      batch_size: 2500,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      importer_environment: { id: string; key: string; webhook_url: string; batch_size: number };
+    }>();
+    expect(body.importer_environment.webhook_url).toBe("https://example.com/hooks/prod");
+    expect(body.importer_environment.batch_size).toBe(2500);
+    expect(body.importer_environment.key).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it("updates fields on a subsequent call without rotating the key", async () => {
+    const before = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/environments",
+    );
+    const beforeBody = await before.json<{
+      environments: {
+        env_slug: string;
+        importer_environment: { id: string; key: string } | null;
+      }[];
+    }>();
+    const stagingKey = beforeBody.environments.find((e) => e.env_slug === "staging")
+      ?.importer_environment?.key;
+    expect(stagingKey).toBeDefined();
+
+    const res = await put("imp_tenants", "env_evo_staging", {
+      webhook_url: "https://example.com/hooks/staging-v2",
+      batch_size: 5000,
+      filter_invalid_rows: true,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      importer_environment: {
+        key: string;
+        webhook_url: string;
+        batch_size: number;
+        filter_invalid_rows: boolean;
+      };
+    }>();
+    expect(body.importer_environment.key).toBe(stagingKey);
+    expect(body.importer_environment.webhook_url).toBe(
+      "https://example.com/hooks/staging-v2",
+    );
+    expect(body.importer_environment.batch_size).toBe(5000);
+    expect(body.importer_environment.filter_invalid_rows).toBe(true);
+  });
+
+  it("rejects a non-http(s) webhook URL with 400", async () => {
+    const res = await put("imp_tenants", "env_evo_staging", {
+      webhook_url: "javascript:alert(1)",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects batch_size below 1 with 400", async () => {
+    const res = await put("imp_tenants", "env_evo_staging", {
+      webhook_url: "https://example.com/h",
+      batch_size: 0,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects batch_size above 50000 with 400", async () => {
+    const res = await put("imp_tenants", "env_evo_staging", {
+      webhook_url: "https://example.com/h",
+      batch_size: 50001,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when the env belongs to a different project", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO environments (id, project_id, slug, name, is_default, created_at)
+         VALUES ('env_foreign_x', 'proj_foreign', 'fx', 'FX', 0, unixepoch())`,
+      ),
+    ]);
+
+    const res = await put("imp_tenants", "env_foreign_x", {
+      webhook_url: "https://example.com/h",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the importer belongs to a different project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_env_put', 'proj_foreign', 'FI EnvPut', unixepoch(), unixepoch())`,
+      ),
+    ]);
+
+    const res = await put("imp_foreign_env_put", "env_evo_staging", {
+      webhook_url: "https://example.com/h",
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
