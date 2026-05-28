@@ -105,6 +105,67 @@ export function ColumnsTab({ importerId }: Props) {
     }
   }
 
+  async function applyReorder(orderedIds: string[]) {
+    // Guard against concurrent reorders: ▲/▼ buttons are wired to disable on
+    // `saving=true`, but a rapid double-click could still queue a second call
+    // before this one's optimistic update lands. Early-return if one is in flight.
+    if (saving) return;
+
+    const prev = columns ?? [];
+    // Optimistic local update.
+    const byId = new Map(prev.map((c) => [c.id, c]));
+    const reordered = orderedIds
+      .map((id, i) => {
+        const c = byId.get(id);
+        return c ? { ...c, position: i + 1 } : null;
+      })
+      .filter((c): c is ColumnRow => c !== null);
+    setColumns(reordered);
+    setSaving(true);
+
+    try {
+      const res = await api.api.importers[":importer_id"].columns.order.$put({
+        param: { importer_id: importerId },
+        json: { ordered_ids: orderedIds },
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to reorder columns: ${res.status}`);
+      }
+      const data = await res.json();
+      setColumns(data.columns as ColumnRow[]);
+    } catch (err) {
+      console.error("Reorder failed, reverting:", err);
+      setColumns(prev);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function moveColumn(columnId: string, direction: -1 | 1) {
+    if (saving) return;
+    const cols = columns ?? [];
+    const idx = cols.findIndex((c) => c.id === columnId);
+    if (idx === -1) return;
+    const target = idx + direction;
+    if (target < 0 || target >= cols.length) return;
+    const next = [...cols];
+    [next[idx], next[target]] = [next[target]!, next[idx]!];
+    void applyReorder(next.map((c) => c.id));
+  }
+
+  function handleDrop(draggedId: string, droppedOnId: string) {
+    if (saving) return;
+    if (draggedId === droppedOnId) return;
+    const cols = columns ?? [];
+    const from = cols.findIndex((c) => c.id === draggedId);
+    const to = cols.findIndex((c) => c.id === droppedOnId);
+    if (from === -1 || to === -1) return;
+    const next = [...cols];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
+    void applyReorder(next.map((c) => c.id));
+  }
+
   async function handleDelete(columnId: string) {
     setSaving(true);
     setDeleteError(null);
@@ -160,6 +221,7 @@ export function ColumnsTab({ importerId }: Props) {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left">
+              <th className="py-2 pr-4 font-medium text-slate-700">Order</th>
               <th className="py-2 pr-4 font-medium text-slate-700">Name</th>
               <th className="py-2 pr-4 font-medium text-slate-700">Display</th>
               <th className="py-2 pr-4 font-medium text-slate-700">Type</th>
@@ -168,8 +230,46 @@ export function ColumnsTab({ importerId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {columns.map((col) => (
-              <tr key={col.id} className="border-b border-slate-100">
+            {columns.map((col, idx) => (
+              <tr
+                key={col.id}
+                className="border-b border-slate-100"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", col.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData("text/plain");
+                  if (draggedId) handleDrop(draggedId, col.id);
+                }}
+              >
+                <td className="py-2 pr-4 text-slate-500">
+                  <span className="mr-2 cursor-grab select-none" aria-hidden="true">⋮⋮</span>
+                  <button
+                    type="button"
+                    aria-label={`Move ${col.name} up`}
+                    disabled={idx === 0 || saving}
+                    onClick={() => moveColumn(col.id, -1)}
+                    className="px-1 disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${col.name} down`}
+                    disabled={idx === columns.length - 1 || saving}
+                    onClick={() => moveColumn(col.id, 1)}
+                    className="px-1 disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </td>
                 <td className="py-2 pr-4 font-mono text-xs text-slate-700">{col.name}</td>
                 <td className="py-2 pr-4 text-slate-900">{col.display_name}</td>
                 <td className="py-2 pr-4 text-slate-700">{col.validation_type}</td>

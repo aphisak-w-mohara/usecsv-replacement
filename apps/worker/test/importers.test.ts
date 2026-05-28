@@ -617,3 +617,113 @@ describe("DELETE /api/importers/:importer_id/columns/:column_id", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("PUT /api/importers/:importer_id/columns/order", () => {
+  async function setupImporterWithColumns(importerId: string, columnSpecs: { id: string; name: string }[]) {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES (?, 'proj_evo', ?, unixepoch(), unixepoch())`,
+    )
+      .bind(importerId, `Reorder ${importerId}`)
+      .run();
+    for (let i = 0; i < columnSpecs.length; i++) {
+      const s = columnSpecs[i]!;
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO importer_columns
+           (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+         VALUES (?, ?, ?, ?, ?, 'string', 1, 1)`,
+      )
+        .bind(s.id, importerId, i + 1, s.name, s.name)
+        .run();
+    }
+  }
+
+  async function putOrder(importerId: string, ordered_ids: string[]) {
+    return SELF.fetch(
+      `https://example.com/api/importers/${importerId}/columns/order`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ordered_ids }),
+      },
+    );
+  }
+
+  it("reorders the columns and returns them in the new order", async () => {
+    const { env } = await import("cloudflare:test");
+    await setupImporterWithColumns("imp_reorder_ok", [
+      { id: "col_ro_a", name: "alpha" },
+      { id: "col_ro_b", name: "beta" },
+      { id: "col_ro_c", name: "gamma" },
+    ]);
+
+    const res = await putOrder("imp_reorder_ok", ["col_ro_c", "col_ro_a", "col_ro_b"]);
+    expect(res.status).toBe(200);
+    const body = await res.json<{ columns: { id: string; position: number }[] }>();
+    expect(body.columns.map((c) => c.id)).toEqual([
+      "col_ro_c",
+      "col_ro_a",
+      "col_ro_b",
+    ]);
+    expect(body.columns.map((c) => c.position)).toEqual([1, 2, 3]);
+
+    const dbRows = await env.DB.prepare(
+      "SELECT id, position FROM importer_columns WHERE importer_id = 'imp_reorder_ok' ORDER BY position ASC",
+    ).all<{ id: string; position: number }>();
+    expect(dbRows.results.map((r) => r.id)).toEqual([
+      "col_ro_c",
+      "col_ro_a",
+      "col_ro_b",
+    ]);
+  });
+
+  it("rejects a partial id list (missing an existing column) with 400", async () => {
+    await setupImporterWithColumns("imp_reorder_partial", [
+      { id: "col_rp_a", name: "alpha" },
+      { id: "col_rp_b", name: "beta" },
+    ]);
+    const res = await putOrder("imp_reorder_partial", ["col_rp_a"]);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an extra id with 400", async () => {
+    await setupImporterWithColumns("imp_reorder_extra", [
+      { id: "col_re_a", name: "alpha" },
+      { id: "col_re_b", name: "beta" },
+    ]);
+    const res = await putOrder("imp_reorder_extra", ["col_re_a", "col_re_b", "col_re_c"]);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects duplicate ids with 400", async () => {
+    await setupImporterWithColumns("imp_reorder_dup", [
+      { id: "col_rd_a", name: "alpha" },
+      { id: "col_rd_b", name: "beta" },
+    ]);
+    const res = await putOrder("imp_reorder_dup", ["col_rd_a", "col_rd_a"]);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_ord', 'proj_foreign', 'FI Ord', unixepoch(), unixepoch())`,
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importer_columns
+           (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+         VALUES ('col_fo_a', 'imp_foreign_ord', 1, 'a', 'A', 'string', 1, 1)`,
+      ),
+    ]);
+
+    const res = await putOrder("imp_foreign_ord", ["col_fo_a"]);
+    expect(res.status).toBe(404);
+  });
+});
+
