@@ -116,6 +116,47 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
       return c.json({ error: "Database error creating importer" }, 500);
     }
   })
+  .get("/:importer_id", async (c) => {
+    const importerId = c.req.param("importer_id");
+    const session = c.get("session");
+
+    try {
+      const row = await c.env.DB.prepare(
+        `SELECT i.id, i.name, i.archived_at, i.updated_at,
+                (SELECT COUNT(*) FROM importer_columns ic WHERE ic.importer_id = i.id) AS column_count,
+                (SELECT COUNT(*) FROM importer_environments ie WHERE ie.importer_id = i.id) AS env_count
+         FROM importers i
+         WHERE i.id = ? AND i.project_id = ?`,
+      )
+        .bind(importerId, session.project_id)
+        .first<{
+          id: string;
+          name: string;
+          archived_at: number | null;
+          updated_at: number;
+          column_count: number;
+          env_count: number;
+        }>();
+
+      if (!row) {
+        return c.json({ error: "Importer not found" }, 404);
+      }
+
+      return c.json({
+        importer: {
+          id: row.id,
+          name: row.name,
+          column_count: row.column_count,
+          env_count: row.env_count,
+          archived: row.archived_at !== null,
+          updated_at: row.updated_at,
+        },
+      });
+    } catch (err) {
+      console.error("DB error in GET /api/importers/:id:", err);
+      return c.json({ error: "Database error fetching importer" }, 500);
+    }
+  })
   .get("/:importer_id/columns", async (c) => {
     const importerId = c.req.param("importer_id");
     const session = c.get("session");

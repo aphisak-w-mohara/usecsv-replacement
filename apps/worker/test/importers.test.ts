@@ -197,3 +197,62 @@ describe("GET /api/importers/:importer_id/columns", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /api/importers/:importer_id", () => {
+  it("returns the importer row with column + env counts for a known id in the active project", async () => {
+    const res = await SELF.fetch("https://example.com/api/importers/imp_tenants");
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      importer: {
+        id: string;
+        name: string;
+        column_count: number;
+        env_count: number;
+        archived: boolean;
+        updated_at: number;
+      };
+    }>();
+    expect(body.importer).toMatchObject({
+      id: "imp_tenants",
+      name: "Tenants",
+      column_count: 3,
+      env_count: 1,
+      archived: false,
+    });
+    expect(typeof body.importer.updated_at).toBe("number");
+  });
+
+  it("returns 404 for an unknown importer id", async () => {
+    const res = await SELF.fetch("https://example.com/api/importers/imp_nonexistent");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_get', 'proj_foreign', 'Foreign Importer Get', unixepoch(), unixepoch())`,
+      ),
+    ]);
+
+    const res = await SELF.fetch("https://example.com/api/importers/imp_foreign_get");
+    expect(res.status).toBe(404);
+  });
+
+  it("includes archived importers in the single-row fetch (so the detail page can render them)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT INTO importers (id, project_id, name, archived_at, created_at, updated_at)
+       VALUES ('imp_arch_get', 'proj_evo', 'Archived One', unixepoch(), unixepoch(), unixepoch())`,
+    ).run();
+
+    const res = await SELF.fetch("https://example.com/api/importers/imp_arch_get");
+    expect(res.status).toBe(200);
+    const body = await res.json<{ importer: { archived: boolean } }>();
+    expect(body.importer.archived).toBe(true);
+  });
+});
