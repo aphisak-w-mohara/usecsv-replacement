@@ -68,12 +68,14 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
         }
       }
 
-      // Verify the importer_environment exists and belongs to the active project.
+      // Verify the importer_environment exists, belongs to the active project,
+      // AND its parent importer isn't archived. Archived importers must not
+      // accept new uploads — they exist only for the historical audit trail.
       const impEnv = await c.env.DB.prepare(
         `SELECT ie.id, i.project_id
          FROM importer_environments ie
          JOIN importers i ON i.id = ie.importer_id
-         WHERE ie.id = ? AND i.project_id = ?`,
+         WHERE ie.id = ? AND i.project_id = ? AND i.archived_at IS NULL`,
       )
         .bind(body.importer_environment_id, session.project_id)
         .first<{ id: string; project_id: string }>();
