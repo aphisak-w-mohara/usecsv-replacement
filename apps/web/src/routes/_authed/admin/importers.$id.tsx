@@ -8,6 +8,7 @@ import {
   ImporterGeneralTab,
   type GeneralTabImporter,
 } from "../../../components/importers/importer-general-tab";
+import { ColumnsTab } from "../../../components/importers/columns-tab";
 import { api } from "../../../lib/api";
 
 export const Route = createFileRoute("/_authed/admin/importers/$id")({
@@ -138,11 +139,7 @@ function ImporterDetailRoute() {
             );
           }
           if (tab === "columns") {
-            return (
-              <p className="text-sm text-slate-500">
-                Column editor lands in <strong>Story #16</strong>.
-              </p>
-            );
+            return <ColumnsTab importerId={importer.id} />;
           }
           return (
             <p className="text-sm text-slate-500">
