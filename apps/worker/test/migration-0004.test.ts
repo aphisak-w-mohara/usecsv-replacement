@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
-describe("migration 0003 — dispatch schema", () => {
+describe("migration 0004 — dispatch schema", () => {
   beforeAll(async () => {
     // Seed minimal parent rows so FK constraints on upload_batches / webhook_attempts pass.
     // The uploads table has many NOT NULL fields; we supply the minimum required values.
