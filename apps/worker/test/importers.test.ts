@@ -366,3 +366,254 @@ describe("PATCH /api/importers/:importer_id", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("POST /api/importers/:importer_id/columns", () => {
+  async function create(importerId: string, body: unknown) {
+    return SELF.fetch(`https://example.com/api/importers/${importerId}/columns`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("creates a column with position = max+1 and returns it", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_col_target', 'proj_evo', 'Col Target', unixepoch(), unixepoch())`,
+    ).run();
+
+    const res = await create("imp_col_target", {
+      name: "phone_number",
+      display_name: "Phone number",
+      validation_type: "phone",
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json<{ column: { id: string; name: string; validation_type: string } }>();
+    expect(body.column).toMatchObject({
+      name: "phone_number",
+      display_name: "Phone number",
+      validation_type: "phone",
+      must_be_matched: true,
+      value_cannot_be_blank: true,
+    });
+    expect(body.column.id).toMatch(/^col_/);
+
+    const pos = await env.DB.prepare(
+      "SELECT position FROM importer_columns WHERE id = ?",
+    )
+      .bind(body.column.id)
+      .first<{ position: number }>();
+    expect(pos?.position).toBe(1);
+
+    const second = await create("imp_col_target", {
+      name: "second_col",
+      display_name: "Second",
+    });
+    expect(second.status).toBe(201);
+    const secondBody = await second.json<{ column: { id: string } }>();
+    const pos2 = await env.DB.prepare(
+      "SELECT position FROM importer_columns WHERE id = ?",
+    )
+      .bind(secondBody.column.id)
+      .first<{ position: number }>();
+    expect(pos2?.position).toBe(2);
+  });
+
+  it("rejects an invalid machine name with 400", async () => {
+    const res = await create("imp_tenants", {
+      name: "Bad Name",
+      display_name: "Bad",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a name beginning with a digit with 400", async () => {
+    const res = await create("imp_tenants", {
+      name: "1abc",
+      display_name: "Bad",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a duplicate column name within the importer with 409", async () => {
+    const res = await create("imp_tenants", {
+      name: "first_name",
+      display_name: "Dup",
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects an invalid validation_type with 400", async () => {
+    const res = await create("imp_tenants", {
+      name: "weird_field",
+      display_name: "Weird",
+      validation_type: "fancy_type",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_col', 'proj_foreign', 'Foreign Importer Col', unixepoch(), unixepoch())`,
+      ),
+    ]);
+
+    const res = await create("imp_foreign_col", {
+      name: "first_name",
+      display_name: "First",
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/importers/:importer_id/columns/:column_id", () => {
+  async function patchCol(importerId: string, columnId: string, body: unknown) {
+    return SELF.fetch(
+      `https://example.com/api/importers/${importerId}/columns/${columnId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+  }
+
+  it("updates a single column field and leaves others untouched", async () => {
+    const { env } = await import("cloudflare:test");
+    const colId = "col_patch_target";
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importer_columns
+         (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+       VALUES (?, 'imp_tenants', 99, 'patch_me', 'Patch Me', 'string', 1, 1)`,
+    )
+      .bind(colId)
+      .run();
+
+    const res = await patchCol("imp_tenants", colId, { display_name: "Patched Name" });
+    expect(res.status).toBe(200);
+    const body = await res.json<{ column: { display_name: string; name: string } }>();
+    expect(body.column.display_name).toBe("Patched Name");
+    expect(body.column.name).toBe("patch_me");
+  });
+
+  it("rejects renaming to an existing column name within the importer with 409", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importer_columns
+         (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+       VALUES ('col_rename_src', 'imp_tenants', 98, 'rename_me', 'Rename', 'string', 1, 1)`,
+    ).run();
+
+    const res = await patchCol("imp_tenants", "col_rename_src", { name: "first_name" });
+    expect(res.status).toBe(409);
+  });
+
+  it("returns 404 when the column belongs to a different importer", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_col_owner_other', 'proj_evo', 'Other Importer', unixepoch(), unixepoch())`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importer_columns
+         (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+       VALUES ('col_in_other_imp', 'imp_col_owner_other', 1, 'other_col', 'Other', 'string', 1, 1)`,
+    ).run();
+
+    const res = await patchCol("imp_tenants", "col_in_other_imp", { display_name: "Hijacked" });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_col_pat', 'proj_foreign', 'FI ColPat', unixepoch(), unixepoch())`,
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importer_columns
+           (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+         VALUES ('col_in_foreign_imp', 'imp_foreign_col_pat', 1, 'first_name', 'F', 'string', 1, 1)`,
+      ),
+    ]);
+
+    const res = await patchCol("imp_foreign_col_pat", "col_in_foreign_imp", { display_name: "X" });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/importers/:importer_id/columns/:column_id", () => {
+  it("removes the column and returns 204", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importer_columns
+         (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+       VALUES ('col_to_delete', 'imp_tenants', 97, 'goodbye', 'Goodbye', 'string', 1, 1)`,
+    ).run();
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/columns/col_to_delete",
+      { method: "DELETE" },
+    );
+    expect(res.status).toBe(204);
+
+    const row = await env.DB.prepare(
+      "SELECT id FROM importer_columns WHERE id = 'col_to_delete'",
+    ).first();
+    expect(row).toBeNull();
+  });
+
+  it("returns 404 when the column belongs to a different importer", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+       VALUES ('imp_other_del', 'proj_evo', 'Other Del', unixepoch(), unixepoch())`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO importer_columns
+         (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+       VALUES ('col_other_imp_del', 'imp_other_del', 1, 'other_col_del', 'OD', 'string', 1, 1)`,
+    ).run();
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_tenants/columns/col_other_imp_del",
+      { method: "DELETE" },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for an importer in another project (IDOR guard)", async () => {
+    const { env } = await import("cloudflare:test");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO projects (id, slug, name, created_at) VALUES ('proj_foreign', 'foreign', 'Foreign Co', unixepoch())",
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
+         VALUES ('imp_foreign_del', 'proj_foreign', 'FI Del', unixepoch(), unixepoch())`,
+      ),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO importer_columns
+           (id, importer_id, position, name, display_name, validation_type, must_be_matched, value_cannot_be_blank)
+         VALUES ('col_foreign_del', 'imp_foreign_del', 1, 'foreign_col', 'FC', 'string', 1, 1)`,
+      ),
+    ]);
+
+    const res = await SELF.fetch(
+      "https://example.com/api/importers/imp_foreign_del/columns/col_foreign_del",
+      { method: "DELETE" },
+    );
+    expect(res.status).toBe(404);
+  });
+});
