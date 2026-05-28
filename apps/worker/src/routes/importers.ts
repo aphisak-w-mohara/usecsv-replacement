@@ -79,6 +79,14 @@ function shapeColumn(row: ColumnFullRow) {
   };
 }
 
+// 32 random bytes → 64 hex chars → 256 bits of entropy. Used for HMAC webhook
+// secrets where the prior `crypto.randomUUID()` (122 bits) was just below the
+// 128-bit security floor.
+function generateWebhookSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 type ImporterListRow = {
   id: string;
   name: string;
@@ -868,4 +876,177 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         return c.json({ error: "Database error saving env config" }, 500);
       }
     },
-  );
+  )
+  .post("/:importer_id/environments/:env_id/signing", async (c) => {
+    const importerId = c.req.param("importer_id");
+    const envId = c.req.param("env_id");
+
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
+
+      const secret = generateWebhookSecret();
+      await c.env.DB.prepare(
+        `UPDATE importer_environments
+           SET webhook_signing_enabled = 1, webhook_secret = ?
+         WHERE id = ?`,
+      )
+        .bind(secret, ie.id)
+        .run();
+
+      const fresh = await readImporterEnv(c.env.DB, ie.id);
+      return c.json({ secret, importer_environment: shapeImporterEnv(fresh!) });
+    } catch (err) {
+      console.error("DB error in POST /signing:", err);
+      return c.json({ error: "Database error enabling signing" }, 500);
+    }
+  })
+  .post("/:importer_id/environments/:env_id/rotate-secret", async (c) => {
+    const importerId = c.req.param("importer_id");
+    const envId = c.req.param("env_id");
+
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
+      if (!ie.webhook_signing_enabled) {
+        return c.json({ error: "Enable signing before rotating the secret" }, 409);
+      }
+
+      const secret = generateWebhookSecret();
+      await c.env.DB.prepare(
+        "UPDATE importer_environments SET webhook_secret = ? WHERE id = ?",
+      )
+        .bind(secret, ie.id)
+        .run();
+
+      const fresh = await readImporterEnv(c.env.DB, ie.id);
+      return c.json({ secret, importer_environment: shapeImporterEnv(fresh!) });
+    } catch (err) {
+      console.error("DB error in POST /rotate-secret:", err);
+      return c.json({ error: "Database error rotating secret" }, 500);
+    }
+  })
+  .post("/:importer_id/environments/:env_id/rotate-key", async (c) => {
+    const importerId = c.req.param("importer_id");
+    const envId = c.req.param("env_id");
+
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
+
+      const newKey = crypto.randomUUID();
+      await c.env.DB.prepare(
+        "UPDATE importer_environments SET key = ? WHERE id = ?",
+      )
+        .bind(newKey, ie.id)
+        .run();
+
+      const fresh = await readImporterEnv(c.env.DB, ie.id);
+      return c.json({ importer_environment: shapeImporterEnv(fresh!) });
+    } catch (err) {
+      if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
+        return c.json({ error: "Key collision; try again" }, 500);
+      }
+      console.error("DB error in POST /rotate-key:", err);
+      return c.json({ error: "Database error rotating key" }, 500);
+    }
+  })
+  .delete("/:importer_id/environments/:env_id/signing", async (c) => {
+    const importerId = c.req.param("importer_id");
+    const envId = c.req.param("env_id");
+
+    try {
+      const ie = await resolveImporterEnv(
+        c.env.DB,
+        c.get("session").project_id,
+        importerId,
+        envId,
+      );
+      if (!ie) return c.json({ error: "Importer environment not found" }, 404);
+
+      await c.env.DB.prepare(
+        `UPDATE importer_environments
+           SET webhook_signing_enabled = 0, webhook_secret = NULL
+         WHERE id = ?`,
+      )
+        .bind(ie.id)
+        .run();
+
+      return c.body(null, 204);
+    } catch (err) {
+      console.error("DB error in DELETE /signing:", err);
+      return c.json({ error: "Database error disabling signing" }, 500);
+    }
+  });
+
+type ImporterEnvFullRow = {
+  id: string;
+  importer_id: string;
+  environment_id: string;
+  key: string;
+  webhook_url: string;
+  batch_size: number;
+  filter_invalid_rows: number;
+  include_unmatched_columns: number;
+  webhook_signing_enabled: number;
+  webhook_secret: string | null;
+};
+
+async function resolveImporterEnv(
+  db: D1Database,
+  projectId: string,
+  importerId: string,
+  envId: string,
+) {
+  return db
+    .prepare(
+      `SELECT ie.id, ie.webhook_signing_enabled
+       FROM importer_environments ie
+       JOIN importers i ON i.id = ie.importer_id
+       JOIN environments e ON e.id = ie.environment_id
+       WHERE ie.importer_id = ? AND ie.environment_id = ?
+         AND i.project_id = ? AND e.project_id = ?`,
+    )
+    .bind(importerId, envId, projectId, projectId)
+    .first<{ id: string; webhook_signing_enabled: number }>();
+}
+
+async function readImporterEnv(db: D1Database, ieId: string) {
+  return db
+    .prepare(
+      `SELECT id, importer_id, environment_id, key, webhook_url, batch_size,
+              filter_invalid_rows, include_unmatched_columns,
+              webhook_signing_enabled, webhook_secret
+       FROM importer_environments WHERE id = ?`,
+    )
+    .bind(ieId)
+    .first<ImporterEnvFullRow>();
+}
+
+function shapeImporterEnv(row: ImporterEnvFullRow) {
+  return {
+    id: row.id,
+    key: row.key,
+    webhook_url: row.webhook_url,
+    batch_size: row.batch_size,
+    filter_invalid_rows: Boolean(row.filter_invalid_rows),
+    include_unmatched_columns: Boolean(row.include_unmatched_columns),
+    webhook_signing_enabled: Boolean(row.webhook_signing_enabled),
+    secret_set: row.webhook_secret !== null,
+  };
+}

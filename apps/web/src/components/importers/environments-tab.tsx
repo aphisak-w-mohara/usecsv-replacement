@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { SigningSection } from "./signing-section";
 
 type ImporterEnvironment = {
   id: string;
@@ -114,6 +115,14 @@ export function EnvironmentsTab({ importerId }: Props) {
         envRow={active}
         onSaved={onSaved}
       />
+      {active.importer_environment && (
+        <SigningSection
+          importerId={importerId}
+          envId={active.env_id}
+          importerEnvironment={active.importer_environment}
+          onUpdated={(next) => onSaved(active.env_id, { ...active.importer_environment!, ...next })}
+        />
+      )}
     </div>
   );
 }
