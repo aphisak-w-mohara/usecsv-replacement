@@ -17,7 +17,7 @@ import type { ImporterColumn } from "../../../lib/fuzzy-match";
 import type { ParseSuccess } from "../../../lib/parse-file";
 import type { UploadStatusResponse } from "../../../lib/use-upload-status";
 
-export const Route = createFileRoute("/_authed/admin/importers/$id/upload")({
+export const Route = createFileRoute("/_authed/admin/importers/$id_/upload")({
   component: UploadWizardRoute,
 });
 
