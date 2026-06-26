@@ -1,9 +1,12 @@
-import { SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { env } from "cloudflare:test";
+import { beforeAll, describe, expect, it } from "vitest";
+import { authedFetch, seedSession } from "./helpers/auth.js";
+
+beforeAll(() => seedSession(env));
 
 describe("GET /api/importers", () => {
   it("lists non-archived importers for the dev session's project with counts", async () => {
-    const res = await SELF.fetch("https://example.com/api/importers");
+    const res = await authedFetch("https://example.com/api/importers");
     expect(res.status).toBe(200);
     const body = await res.json<{ importers: { id: string }[] }>();
     const tenants = body.importers.find((i) => i.id === "imp_tenants");
@@ -24,13 +27,13 @@ describe("GET /api/importers", () => {
        VALUES ('imp_archived', 'proj_evo', 'Old Importer', unixepoch(), unixepoch(), unixepoch())`,
     ).run();
 
-    const without = await (
-      await SELF.fetch("https://example.com/api/importers")
-    ).json<{ importers: { id: string }[] }>();
+    const without = await (await authedFetch("https://example.com/api/importers")).json<{
+      importers: { id: string }[];
+    }>();
     expect(without.importers.map((i) => i.id)).not.toContain("imp_archived");
 
     const withArchived = await (
-      await SELF.fetch("https://example.com/api/importers?include_archived=true")
+      await authedFetch("https://example.com/api/importers?include_archived=true")
     ).json<{ importers: { id: string; archived: boolean }[] }>();
     const archived = withArchived.importers.find((i) => i.id === "imp_archived");
     expect(archived).toMatchObject({ id: "imp_archived", archived: true });
@@ -48,7 +51,7 @@ describe("GET /api/importers", () => {
     ).run();
 
     const body = await (
-      await SELF.fetch("https://example.com/api/importers?include_archived=true")
+      await authedFetch("https://example.com/api/importers?include_archived=true")
     ).json<{ importers: { id: string }[] }>();
     expect(body.importers.map((i) => i.id)).not.toContain("imp_foreign");
   });
@@ -56,7 +59,7 @@ describe("GET /api/importers", () => {
 
 describe("POST /api/importers", () => {
   async function create(body: unknown) {
-    return SELF.fetch("https://example.com/api/importers", {
+    return authedFetch("https://example.com/api/importers", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -76,9 +79,7 @@ describe("POST /api/importers", () => {
     expect(body.importer.id).toMatch(/^imp_/);
 
     const { env } = await import("cloudflare:test");
-    const row = await env.DB.prepare(
-      "SELECT project_id FROM importers WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT project_id FROM importers WHERE id = ?")
       .bind(body.importer.id)
       .first<{ project_id: string }>();
     expect(row?.project_id).toBe("proj_evo");
@@ -133,9 +134,7 @@ describe("POST /api/importers", () => {
     const body = await res.json<{ importer: { id: string } }>();
 
     const { env } = await import("cloudflare:test");
-    const row = await env.DB.prepare(
-      "SELECT project_id FROM importers WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT project_id FROM importers WHERE id = ?")
       .bind(body.importer.id)
       .first<{ project_id: string }>();
     expect(row?.project_id).toBe("proj_evo");
@@ -144,7 +143,7 @@ describe("POST /api/importers", () => {
 
 describe("GET /api/importers/:importer_id/columns", () => {
   it("returns the column list for a known importer scoped to the dev session's project", async () => {
-    const res = await SELF.fetch("https://example.com/api/importers/imp_tenants/columns");
+    const res = await authedFetch("https://example.com/api/importers/imp_tenants/columns");
     expect(res.status).toBe(200);
     const body = await res.json<{ importer_id: string; columns: { name: string }[] }>();
     expect(body).toMatchObject({
@@ -166,7 +165,7 @@ describe("GET /api/importers/:importer_id/columns", () => {
   });
 
   it("returns columns in position order, not insertion order", async () => {
-    const res = await SELF.fetch("https://example.com/api/importers/imp_tenants/columns");
+    const res = await authedFetch("https://example.com/api/importers/imp_tenants/columns");
     expect(res.status).toBe(200);
     const body = await res.json<{ columns: { name: string }[] }>();
     const names = body.columns.map((c) => c.name);
@@ -174,7 +173,7 @@ describe("GET /api/importers/:importer_id/columns", () => {
   });
 
   it("returns 404 for an unknown importer id", async () => {
-    const res = await SELF.fetch("https://example.com/api/importers/imp_nonexistent/columns");
+    const res = await authedFetch("https://example.com/api/importers/imp_nonexistent/columns");
     expect(res.status).toBe(404);
   });
 
@@ -193,14 +192,14 @@ describe("GET /api/importers/:importer_id/columns", () => {
       ),
     ]);
 
-    const res = await SELF.fetch("https://example.com/api/importers/imp_other/columns");
+    const res = await authedFetch("https://example.com/api/importers/imp_other/columns");
     expect(res.status).toBe(404);
   });
 });
 
 describe("GET /api/importers/:importer_id", () => {
   it("returns the importer row with column + env counts for a known id in the active project", async () => {
-    const res = await SELF.fetch("https://example.com/api/importers/imp_tenants");
+    const res = await authedFetch("https://example.com/api/importers/imp_tenants");
     expect(res.status).toBe(200);
     const body = await res.json<{
       importer: {
@@ -223,7 +222,7 @@ describe("GET /api/importers/:importer_id", () => {
   });
 
   it("returns 404 for an unknown importer id", async () => {
-    const res = await SELF.fetch("https://example.com/api/importers/imp_nonexistent");
+    const res = await authedFetch("https://example.com/api/importers/imp_nonexistent");
     expect(res.status).toBe(404);
   });
 
@@ -239,7 +238,7 @@ describe("GET /api/importers/:importer_id", () => {
       ),
     ]);
 
-    const res = await SELF.fetch("https://example.com/api/importers/imp_foreign_get");
+    const res = await authedFetch("https://example.com/api/importers/imp_foreign_get");
     expect(res.status).toBe(404);
   });
 
@@ -250,7 +249,7 @@ describe("GET /api/importers/:importer_id", () => {
        VALUES ('imp_arch_get', 'proj_evo', 'Archived One', unixepoch(), unixepoch(), unixepoch())`,
     ).run();
 
-    const res = await SELF.fetch("https://example.com/api/importers/imp_arch_get");
+    const res = await authedFetch("https://example.com/api/importers/imp_arch_get");
     expect(res.status).toBe(200);
     const body = await res.json<{ importer: { archived: boolean } }>();
     expect(body.importer.archived).toBe(true);
@@ -259,7 +258,7 @@ describe("GET /api/importers/:importer_id", () => {
 
 describe("PATCH /api/importers/:importer_id", () => {
   async function patch(id: string, body: { name?: string; archived?: boolean }) {
-    return SELF.fetch(`https://example.com/api/importers/${id}`, {
+    return authedFetch(`https://example.com/api/importers/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -369,7 +368,7 @@ describe("PATCH /api/importers/:importer_id", () => {
 
 describe("POST /api/importers/:importer_id/columns", () => {
   async function create(importerId: string, body: unknown) {
-    return SELF.fetch(`https://example.com/api/importers/${importerId}/columns`, {
+    return authedFetch(`https://example.com/api/importers/${importerId}/columns`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -389,7 +388,9 @@ describe("POST /api/importers/:importer_id/columns", () => {
       validation_type: "phone",
     });
     expect(res.status).toBe(201);
-    const body = await res.json<{ column: { id: string; name: string; validation_type: string } }>();
+    const body = await res.json<{
+      column: { id: string; name: string; validation_type: string };
+    }>();
     expect(body.column).toMatchObject({
       name: "phone_number",
       display_name: "Phone number",
@@ -399,9 +400,7 @@ describe("POST /api/importers/:importer_id/columns", () => {
     });
     expect(body.column.id).toMatch(/^col_/);
 
-    const pos = await env.DB.prepare(
-      "SELECT position FROM importer_columns WHERE id = ?",
-    )
+    const pos = await env.DB.prepare("SELECT position FROM importer_columns WHERE id = ?")
       .bind(body.column.id)
       .first<{ position: number }>();
     expect(pos?.position).toBe(1);
@@ -412,9 +411,7 @@ describe("POST /api/importers/:importer_id/columns", () => {
     });
     expect(second.status).toBe(201);
     const secondBody = await second.json<{ column: { id: string } }>();
-    const pos2 = await env.DB.prepare(
-      "SELECT position FROM importer_columns WHERE id = ?",
-    )
+    const pos2 = await env.DB.prepare("SELECT position FROM importer_columns WHERE id = ?")
       .bind(secondBody.column.id)
       .first<{ position: number }>();
     expect(pos2?.position).toBe(2);
@@ -475,14 +472,11 @@ describe("POST /api/importers/:importer_id/columns", () => {
 
 describe("PATCH /api/importers/:importer_id/columns/:column_id", () => {
   async function patchCol(importerId: string, columnId: string, body: unknown) {
-    return SELF.fetch(
-      `https://example.com/api/importers/${importerId}/columns/${columnId}`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      },
-    );
+    return authedFetch(`https://example.com/api/importers/${importerId}/columns/${columnId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
   }
 
   it("updates a single column field and leaves others untouched", async () => {
@@ -562,7 +556,7 @@ describe("DELETE /api/importers/:importer_id/columns/:column_id", () => {
        VALUES ('col_to_delete', 'imp_tenants', 97, 'goodbye', 'Goodbye', 'string', 1, 1)`,
     ).run();
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_tenants/columns/col_to_delete",
       { method: "DELETE" },
     );
@@ -586,7 +580,7 @@ describe("DELETE /api/importers/:importer_id/columns/:column_id", () => {
        VALUES ('col_other_imp_del', 'imp_other_del', 1, 'other_col_del', 'OD', 'string', 1, 1)`,
     ).run();
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_tenants/columns/col_other_imp_del",
       { method: "DELETE" },
     );
@@ -610,7 +604,7 @@ describe("DELETE /api/importers/:importer_id/columns/:column_id", () => {
       ),
     ]);
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_foreign_del/columns/col_foreign_del",
       { method: "DELETE" },
     );
@@ -619,7 +613,10 @@ describe("DELETE /api/importers/:importer_id/columns/:column_id", () => {
 });
 
 describe("PUT /api/importers/:importer_id/columns/order", () => {
-  async function setupImporterWithColumns(importerId: string, columnSpecs: { id: string; name: string }[]) {
+  async function setupImporterWithColumns(
+    importerId: string,
+    columnSpecs: { id: string; name: string }[],
+  ) {
     const { env } = await import("cloudflare:test");
     await env.DB.prepare(
       `INSERT OR IGNORE INTO importers (id, project_id, name, created_at, updated_at)
@@ -640,14 +637,11 @@ describe("PUT /api/importers/:importer_id/columns/order", () => {
   }
 
   async function putOrder(importerId: string, ordered_ids: string[]) {
-    return SELF.fetch(
-      `https://example.com/api/importers/${importerId}/columns/order`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ordered_ids }),
-      },
-    );
+    return authedFetch(`https://example.com/api/importers/${importerId}/columns/order`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ordered_ids }),
+    });
   }
 
   it("reorders the columns and returns them in the new order", async () => {
@@ -661,21 +655,13 @@ describe("PUT /api/importers/:importer_id/columns/order", () => {
     const res = await putOrder("imp_reorder_ok", ["col_ro_c", "col_ro_a", "col_ro_b"]);
     expect(res.status).toBe(200);
     const body = await res.json<{ columns: { id: string; position: number }[] }>();
-    expect(body.columns.map((c) => c.id)).toEqual([
-      "col_ro_c",
-      "col_ro_a",
-      "col_ro_b",
-    ]);
+    expect(body.columns.map((c) => c.id)).toEqual(["col_ro_c", "col_ro_a", "col_ro_b"]);
     expect(body.columns.map((c) => c.position)).toEqual([1, 2, 3]);
 
     const dbRows = await env.DB.prepare(
       "SELECT id, position FROM importer_columns WHERE importer_id = 'imp_reorder_ok' ORDER BY position ASC",
     ).all<{ id: string; position: number }>();
-    expect(dbRows.results.map((r) => r.id)).toEqual([
-      "col_ro_c",
-      "col_ro_a",
-      "col_ro_b",
-    ]);
+    expect(dbRows.results.map((r) => r.id)).toEqual(["col_ro_c", "col_ro_a", "col_ro_b"]);
   });
 
   it("rejects a partial id list (missing an existing column) with 400", async () => {
@@ -735,9 +721,7 @@ describe("GET /api/importers/:importer_id/environments", () => {
        VALUES ('env_evo_uat', 'proj_evo', 'uat', 'UAT', 0, unixepoch())`,
     ).run();
 
-    const res = await SELF.fetch(
-      "https://example.com/api/importers/imp_tenants/environments",
-    );
+    const res = await authedFetch("https://example.com/api/importers/imp_tenants/environments");
     expect(res.status).toBe(200);
     const body = await res.json<{
       environments: {
@@ -751,9 +735,7 @@ describe("GET /api/importers/:importer_id/environments", () => {
     const staging = body.environments.find((e) => e.env_slug === "staging");
     expect(staging).toBeDefined();
     expect(staging!.configured).toBe(true);
-    expect(staging!.importer_environment?.key).toBe(
-      "82b18e5e-6412-4102-901a-ce3c05d71460",
-    );
+    expect(staging!.importer_environment?.key).toBe("82b18e5e-6412-4102-901a-ce3c05d71460");
 
     const uat = body.environments.find((e) => e.env_slug === "uat");
     expect(uat).toBeDefined();
@@ -773,23 +755,18 @@ describe("GET /api/importers/:importer_id/environments", () => {
       ),
     ]);
 
-    const res = await SELF.fetch(
-      "https://example.com/api/importers/imp_foreign_env/environments",
-    );
+    const res = await authedFetch("https://example.com/api/importers/imp_foreign_env/environments");
     expect(res.status).toBe(404);
   });
 });
 
 describe("PUT /api/importers/:importer_id/environments/:env_id", () => {
   async function put(importerId: string, envId: string, body: unknown) {
-    return SELF.fetch(
-      `https://example.com/api/importers/${importerId}/environments/${envId}`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      },
-    );
+    return authedFetch(`https://example.com/api/importers/${importerId}/environments/${envId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
   }
 
   it("creates a new importer_environment on first call with a server-generated key", async () => {
@@ -813,9 +790,7 @@ describe("PUT /api/importers/:importer_id/environments/:env_id", () => {
   });
 
   it("updates fields on a subsequent call without rotating the key", async () => {
-    const before = await SELF.fetch(
-      "https://example.com/api/importers/imp_tenants/environments",
-    );
+    const before = await authedFetch("https://example.com/api/importers/imp_tenants/environments");
     const beforeBody = await before.json<{
       environments: {
         env_slug: string;
@@ -841,9 +816,7 @@ describe("PUT /api/importers/:importer_id/environments/:env_id", () => {
       };
     }>();
     expect(body.importer_environment.key).toBe(stagingKey);
-    expect(body.importer_environment.webhook_url).toBe(
-      "https://example.com/hooks/staging-v2",
-    );
+    expect(body.importer_environment.webhook_url).toBe("https://example.com/hooks/staging-v2");
     expect(body.importer_environment.batch_size).toBe(5000);
     expect(body.importer_environment.filter_invalid_rows).toBe(true);
   });
@@ -919,20 +892,17 @@ describe("Webhook signing — enable / rotate / disable", () => {
       .run();
     // Upsert importer_environment via the existing PUT route, so we don't have
     // to know the row shape inside-out here.
-    await SELF.fetch(
-      `https://example.com/api/importers/imp_tenants/environments/${envId}`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ webhook_url: "https://example.com/h" }),
-      },
-    );
+    await authedFetch(`https://example.com/api/importers/imp_tenants/environments/${envId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ webhook_url: "https://example.com/h" }),
+    });
   }
 
   it("POST /signing enables signing, returns the secret once, and persists it", async () => {
     await ensureConfigured("sig_enable", "env_evo_sig_enable");
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_enable/signing",
       { method: "POST" },
     );
@@ -958,13 +928,13 @@ describe("Webhook signing — enable / rotate / disable", () => {
 
   it("POST /rotate-secret returns a new value distinct from the previous one", async () => {
     await ensureConfigured("sig_rot_sec", "env_evo_sig_rot_sec");
-    const first = await SELF.fetch(
+    const first = await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_rot_sec/signing",
       { method: "POST" },
     );
     const firstBody = await first.json<{ secret: string }>();
 
-    const rot = await SELF.fetch(
+    const rot = await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_rot_sec/rotate-secret",
       { method: "POST" },
     );
@@ -975,7 +945,7 @@ describe("Webhook signing — enable / rotate / disable", () => {
 
   it("POST /rotate-secret returns 409 when signing is not enabled", async () => {
     await ensureConfigured("sig_no_enable", "env_evo_sig_no_enable");
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_no_enable/rotate-secret",
       { method: "POST" },
     );
@@ -990,7 +960,7 @@ describe("Webhook signing — enable / rotate / disable", () => {
        WHERE importer_id = 'imp_tenants' AND environment_id = 'env_evo_sig_rot_key'`,
     ).first<{ key: string }>();
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_rot_key/rotate-key",
       { method: "POST" },
     );
@@ -998,9 +968,7 @@ describe("Webhook signing — enable / rotate / disable", () => {
     const body = await res.json<{ importer_environment: { key: string } }>();
     expect(body.importer_environment.key).not.toBe(before?.key);
 
-    const oldKeyMatch = await env.DB.prepare(
-      "SELECT id FROM importer_environments WHERE key = ?",
-    )
+    const oldKeyMatch = await env.DB.prepare("SELECT id FROM importer_environments WHERE key = ?")
       .bind(before!.key)
       .first<{ id: string }>();
     expect(oldKeyMatch).toBeNull();
@@ -1008,12 +976,12 @@ describe("Webhook signing — enable / rotate / disable", () => {
 
   it("DELETE /signing disables signing and clears the secret", async () => {
     await ensureConfigured("sig_disable", "env_evo_sig_disable");
-    await SELF.fetch(
+    await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_disable/signing",
       { method: "POST" },
     );
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_disable/signing",
       { method: "DELETE" },
     );
@@ -1031,14 +999,12 @@ describe("Webhook signing — enable / rotate / disable", () => {
 
   it("GET /environments never returns the raw webhook_secret", async () => {
     await ensureConfigured("sig_get_safety", "env_evo_sig_safety");
-    await SELF.fetch(
+    await authedFetch(
       "https://example.com/api/importers/imp_tenants/environments/env_evo_sig_safety/signing",
       { method: "POST" },
     );
 
-    const res = await SELF.fetch(
-      "https://example.com/api/importers/imp_tenants/environments",
-    );
+    const res = await authedFetch("https://example.com/api/importers/imp_tenants/environments");
     const body = await res.text();
     expect(body).not.toMatch(/webhook_secret"\s*:\s*"[a-f0-9-]/i);
   });
@@ -1064,12 +1030,10 @@ describe("Webhook signing — enable / rotate / disable", () => {
       ),
     ]);
 
-    const res = await SELF.fetch(
+    const res = await authedFetch(
       "https://example.com/api/importers/imp_foreign_sig/environments/env_foreign_sig/signing",
       { method: "POST" },
     );
     expect(res.status).toBe(404);
   });
 });
-
-

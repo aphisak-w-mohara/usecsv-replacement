@@ -9,40 +9,64 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedAdminImportersIndexRouteImport } from './routes/_authed/admin/importers.index'
 import { Route as AuthedAdminImportersIdRouteImport } from './routes/_authed/admin/importers.$id'
 import { Route as AuthedAdminImportersIdUploadRouteImport } from './routes/_authed/admin/importers.$id_.upload'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedRoute = AuthedRouteImport.update({
+  id: '/_authed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedAdminImportersIndexRoute =
   AuthedAdminImportersIndexRouteImport.update({
-    id: '/_authed/admin/importers/',
+    id: '/admin/importers/',
     path: '/admin/importers/',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => AuthedRoute,
   } as any)
 const AuthedAdminImportersIdRoute = AuthedAdminImportersIdRouteImport.update({
-  id: '/_authed/admin/importers/$id',
+  id: '/admin/importers/$id',
   path: '/admin/importers/$id',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedAdminImportersIdUploadRoute =
   AuthedAdminImportersIdUploadRouteImport.update({
-    id: '/_authed/admin/importers/$id_/upload',
+    id: '/admin/importers/$id_/upload',
     path: '/admin/importers/$id/upload',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => AuthedRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/admin/importers/': typeof AuthedAdminImportersIndexRoute
   '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/admin/importers': typeof AuthedAdminImportersIndexRoute
   '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/_authed': typeof AuthedRouteWithChildren
+  '/login': typeof LoginRoute
   '/_authed/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/_authed/admin/importers/': typeof AuthedAdminImportersIndexRoute
   '/_authed/admin/importers/$id_/upload': typeof AuthedAdminImportersIdUploadRoute
@@ -50,57 +74,100 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
+    | '/login'
     | '/admin/importers/$id'
     | '/admin/importers/'
     | '/admin/importers/$id/upload'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
+    | '/login'
     | '/admin/importers/$id'
     | '/admin/importers'
     | '/admin/importers/$id/upload'
   id:
     | '__root__'
+    | '/'
+    | '/_authed'
+    | '/login'
     | '/_authed/admin/importers/$id'
     | '/_authed/admin/importers/'
     | '/_authed/admin/importers/$id_/upload'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthedAdminImportersIdRoute: typeof AuthedAdminImportersIdRoute
-  AuthedAdminImportersIndexRoute: typeof AuthedAdminImportersIndexRoute
-  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute
+  IndexRoute: typeof IndexRoute
+  AuthedRoute: typeof AuthedRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed': {
+      id: '/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authed/admin/importers/': {
       id: '/_authed/admin/importers/'
       path: '/admin/importers'
       fullPath: '/admin/importers/'
       preLoaderRoute: typeof AuthedAdminImportersIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/admin/importers/$id': {
       id: '/_authed/admin/importers/$id'
       path: '/admin/importers/$id'
       fullPath: '/admin/importers/$id'
       preLoaderRoute: typeof AuthedAdminImportersIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/admin/importers/$id_/upload': {
       id: '/_authed/admin/importers/$id_/upload'
       path: '/admin/importers/$id/upload'
       fullPath: '/admin/importers/$id/upload'
       preLoaderRoute: typeof AuthedAdminImportersIdUploadRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AuthedRoute
     }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
+interface AuthedRouteChildren {
+  AuthedAdminImportersIdRoute: typeof AuthedAdminImportersIdRoute
+  AuthedAdminImportersIndexRoute: typeof AuthedAdminImportersIndexRoute
+  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute
+}
+
+const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAdminImportersIdRoute: AuthedAdminImportersIdRoute,
   AuthedAdminImportersIndexRoute: AuthedAdminImportersIndexRoute,
   AuthedAdminImportersIdUploadRoute: AuthedAdminImportersIdUploadRoute,
+}
+
+const AuthedRouteWithChildren =
+  AuthedRoute._addFileChildren(AuthedRouteChildren)
+
+const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
+  AuthedRoute: AuthedRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

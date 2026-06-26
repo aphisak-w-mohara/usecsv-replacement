@@ -1,6 +1,9 @@
-import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { env } from "cloudflare:test";
+import { beforeAll, describe, expect, it } from "vitest";
 import { dispatchBatch } from "../src/lib/dispatch";
+import { authedFetch, seedSession } from "./helpers/auth.js";
+
+beforeAll(() => seedSession(env));
 
 const UPLOAD_BODY = {
   importer_environment_id: "impenv_tenants_staging",
@@ -17,13 +20,13 @@ const UPLOAD_BODY = {
 
 async function seed(): Promise<string> {
   const created = await (
-    await SELF.fetch("https://example.com/api/uploads", {
+    await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(UPLOAD_BODY),
     })
   ).json<{ upload_id: string }>();
-  await SELF.fetch(`https://example.com/api/uploads/${created.upload_id}/batches/1`, {
+  await authedFetch(`https://example.com/api/uploads/${created.upload_id}/batches/1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -41,7 +44,9 @@ describe("POST /api/uploads/:id/retry", () => {
     const id = await seed();
     await env.DB.prepare("UPDATE uploads SET status = 'halted' WHERE id = ?").bind(id).run();
 
-    const res = await SELF.fetch(`https://example.com/api/uploads/${id}/retry`, { method: "POST" });
+    const res = await authedFetch(`https://example.com/api/uploads/${id}/retry`, {
+      method: "POST",
+    });
     expect(res.status).toBe(202);
 
     const upload = await env.DB.prepare("SELECT status FROM uploads WHERE id = ?")
@@ -51,7 +56,9 @@ describe("POST /api/uploads/:id/retry", () => {
   });
 
   it("404s when the upload is not in the active project", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads/upl_nope/retry", { method: "POST" });
+    const res = await authedFetch("https://example.com/api/uploads/upl_nope/retry", {
+      method: "POST",
+    });
     expect(res.status).toBe(404);
   });
 
@@ -64,12 +71,16 @@ describe("POST /api/uploads/:id/retry", () => {
       await env.DB.prepare(
         `INSERT INTO webhook_attempts (id, upload_id, batch_index, attempt_number, status_code, response_body, started_at, finished_at)
          VALUES (?, ?, 1, ?, 500, 'boom', ?, ?)`,
-      ).bind(`wha_${crypto.randomUUID()}`, id, n, now, now).run();
+      )
+        .bind(`wha_${crypto.randomUUID()}`, id, n, now, now)
+        .run();
     }
     await env.DB.prepare("UPDATE uploads SET status = 'halted' WHERE id = ?").bind(id).run();
 
     // Retry should succeed and clear prior attempts.
-    const retryRes = await SELF.fetch(`https://example.com/api/uploads/${id}/retry`, { method: "POST" });
+    const retryRes = await authedFetch(`https://example.com/api/uploads/${id}/retry`, {
+      method: "POST",
+    });
     expect(retryRes.status).toBe(202);
 
     // All 6 old attempt rows must be gone.
@@ -84,7 +95,8 @@ describe("POST /api/uploads/:id/retry", () => {
     await dispatchBatch(
       env,
       { uploadId: id, batchIndex: 1, attempt: 1 },
-      async () => new Response(JSON.stringify({ errors: [] }), { status: 200 }) as unknown as Response,
+      async () =>
+        new Response(JSON.stringify({ errors: [] }), { status: 200 }) as unknown as Response,
     );
 
     const upload = await env.DB.prepare("SELECT status FROM uploads WHERE id = ?")
@@ -106,7 +118,7 @@ describe("GET /api/uploads/:id/errors.csv", () => {
       .bind(`wha_${crypto.randomUUID()}`, id, now, now)
       .run();
 
-    const res = await SELF.fetch(`https://example.com/api/uploads/${id}/errors.csv`);
+    const res = await authedFetch(`https://example.com/api/uploads/${id}/errors.csv`);
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/csv");
     const text = await res.text();

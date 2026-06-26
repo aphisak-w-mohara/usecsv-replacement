@@ -1,11 +1,18 @@
-import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { env } from "cloudflare:test";
+import { beforeAll, describe, expect, it } from "vitest";
+import { authedFetch, seedSession } from "./helpers/auth.js";
+
+beforeAll(() => seedSession(env));
 
 const UPLOAD_BODY = {
   importer_environment_id: "impenv_tenants_staging",
   file_name: "sample-tenants.csv",
   file_size: 256,
-  matched_columns_map: { first_name: "First name", last_name: "Last name", email: "Customer Email" },
+  matched_columns_map: {
+    first_name: "First name",
+    last_name: "Last name",
+    email: "Customer Email",
+  },
   uploaded_file_headers: ["First name", "Last name", "Customer Email", "Notes"],
   total_rows: 3,
   batch_size: 1000,
@@ -15,7 +22,7 @@ const UPLOAD_BODY = {
 };
 
 async function createUpload(): Promise<{ upload_id: string; numeric_id: number }> {
-  const res = await SELF.fetch("https://example.com/api/uploads", {
+  const res = await authedFetch("https://example.com/api/uploads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(UPLOAD_BODY),
@@ -27,20 +34,17 @@ describe("POST /api/uploads/:id/batches/:index", () => {
   it("writes the canonical payload to R2, records upload_batches, returns 204", async () => {
     const { upload_id, numeric_id } = await createUpload();
 
-    const res = await SELF.fetch(
-      `https://example.com/api/uploads/${upload_id}/batches/1`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rows: [
-            { row: 1, first_name: "Alice", last_name: "Smith", email: "alice@example.com" },
-            { row: 2, first_name: "Bob", last_name: "Jones", email: "bob@example.com" },
-            { row: 3, first_name: "Carol", last_name: "Lee", email: "carol.lee@example.com" },
-          ],
-        }),
-      },
-    );
+    const res = await authedFetch(`https://example.com/api/uploads/${upload_id}/batches/1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rows: [
+          { row: 1, first_name: "Alice", last_name: "Smith", email: "alice@example.com" },
+          { row: 2, first_name: "Bob", last_name: "Jones", email: "bob@example.com" },
+          { row: 3, first_name: "Carol", last_name: "Lee", email: "carol.lee@example.com" },
+        ],
+      }),
+    });
     expect(res.status).toBe(204);
 
     const obj = await env.UPLOADS_BUCKET.get(`uploads/${upload_id}/batches/1.json`);
@@ -71,11 +75,16 @@ describe("POST /api/uploads/:id/batches/:index", () => {
 
   it("is idempotent on (upload_id, batch_index) — repeat returns 204, no duplicate row", async () => {
     const { upload_id } = await createUpload();
-    const body = JSON.stringify({ rows: [{ row: 1, first_name: "A", last_name: "B", email: "a@b.com" }] });
+    const body = JSON.stringify({
+      rows: [{ row: 1, first_name: "A", last_name: "B", email: "a@b.com" }],
+    });
     const opts = { method: "POST", headers: { "Content-Type": "application/json" }, body };
 
-    const first = await SELF.fetch(`https://example.com/api/uploads/${upload_id}/batches/1`, opts);
-    const second = await SELF.fetch(`https://example.com/api/uploads/${upload_id}/batches/1`, opts);
+    const first = await authedFetch(`https://example.com/api/uploads/${upload_id}/batches/1`, opts);
+    const second = await authedFetch(
+      `https://example.com/api/uploads/${upload_id}/batches/1`,
+      opts,
+    );
     expect(first.status).toBe(204);
     expect(second.status).toBe(204);
 
@@ -88,10 +97,12 @@ describe("POST /api/uploads/:id/batches/:index", () => {
   });
 
   it("404s for an upload in another project / nonexistent", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads/upl_nope/batches/1", {
+    const res = await authedFetch("https://example.com/api/uploads/upl_nope/batches/1", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: [{ row: 1, first_name: "A", last_name: "B", email: "a@b.com" }] }),
+      body: JSON.stringify({
+        rows: [{ row: 1, first_name: "A", last_name: "B", email: "a@b.com" }],
+      }),
     });
     expect(res.status).toBe(404);
   });

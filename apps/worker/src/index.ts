@@ -1,15 +1,19 @@
+import type { WebhookDispatchJob } from "@evo-csv/shared";
 import { Hono } from "hono";
 import type { Env, Variables } from "./env.js";
 import { dispatchBatch } from "./lib/dispatch.js";
-import { devSession } from "./middleware/dev-session.js";
+import { requireSession } from "./middleware/require-session.js";
+import { authRoutes } from "./routes/auth.js";
 import { importersRoutes } from "./routes/importers.js";
 import { uploadsRoutes } from "./routes/uploads.js";
-import type { WebhookDispatchJob } from "@evo-csv/shared";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
   .get("/api/health", (c) => c.json({ ok: true }))
-  .use("/api/*", devSession)
-  .get("/api/whoami", (c) => c.json(c.get("session")))
+  // Auth routes (login / callback / logout) must be reachable unauthenticated,
+  // so they mount BEFORE the session gate.
+  .route("/api/auth", authRoutes)
+  .use("/api/*", requireSession)
+  .get("/api/me", (c) => c.json(c.get("session")))
   .route("/api/importers", importersRoutes)
   .route("/api/uploads", uploadsRoutes);
 

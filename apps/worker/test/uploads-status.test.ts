@@ -1,5 +1,8 @@
-import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { env } from "cloudflare:test";
+import { beforeAll, describe, expect, it } from "vitest";
+import { authedFetch, seedSession } from "./helpers/auth.js";
+
+beforeAll(() => seedSession(env));
 
 const UPLOAD_BODY = {
   importer_environment_id: "impenv_tenants_staging",
@@ -15,7 +18,7 @@ const UPLOAD_BODY = {
 };
 
 async function createUpload(): Promise<string> {
-  const res = await SELF.fetch("https://example.com/api/uploads", {
+  const res = await authedFetch("https://example.com/api/uploads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(UPLOAD_BODY),
@@ -36,7 +39,7 @@ type StatusBody = {
 describe("GET /api/uploads/:id", () => {
   it("reports pending with zero delivered when no attempts exist", async () => {
     const id = await createUpload();
-    const res = await SELF.fetch(`https://example.com/api/uploads/${id}`);
+    const res = await authedFetch(`https://example.com/api/uploads/${id}`);
     expect(res.status).toBe(200);
     const body = await res.json<StatusBody>();
     expect(body).toMatchObject({
@@ -63,17 +66,21 @@ describe("GET /api/uploads/:id", () => {
       .run();
     await env.DB.prepare("UPDATE uploads SET status = 'completed' WHERE id = ?").bind(id).run();
 
-    const res = await SELF.fetch(`https://example.com/api/uploads/${id}`);
+    const res = await authedFetch(`https://example.com/api/uploads/${id}`);
     const body = await res.json<StatusBody>();
     expect(body.status).toBe("completed");
     expect(body.batches_delivered).toBe(1);
     expect(body.has_row_errors).toBe(true);
     expect(body.row_errors).toEqual([{ row: 2, msg: "duplicate email" }]);
-    expect(body.latest_attempt).toMatchObject({ batch_index: 1, attempt_number: 1, status_code: 200 });
+    expect(body.latest_attempt).toMatchObject({
+      batch_index: 1,
+      attempt_number: 1,
+      status_code: 200,
+    });
   });
 
   it("404s for an upload outside the active project", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads/upl_nope");
+    const res = await authedFetch("https://example.com/api/uploads/upl_nope");
     expect(res.status).toBe(404);
   });
 });
