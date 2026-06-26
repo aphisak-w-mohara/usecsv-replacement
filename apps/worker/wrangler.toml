@@ -8,7 +8,10 @@ compatibility_flags = ["nodejs_compat"]
 # session cookie works over plain http on the dev server. Deployed envs set
 # this to "staging"/"production" via `wrangler deploy --var` or a per-env block.
 ENVIRONMENT = "local"
-GOOGLE_CLIENT_ID = "REPLACE"
+# OAuth client "EVO UseCSV" in GCP project evo-platform-193721. Client IDs are
+# public (they appear in the OAuth redirect URL); the secret lives in .dev.vars
+# (local) / `wrangler secret put` (deployed).
+GOOGLE_CLIENT_ID = "10301432215-a6jdhuvc6fkvrskns7uiimqdehfeinsp.apps.googleusercontent.com"
 GOOGLE_REDIRECT_URI = "http://localhost:8787/api/auth/google/callback"
 APP_BASE_URL = "http://localhost:5173"
 # GOOGLE_CLIENT_SECRET is a real secret in deployed envs — set it with

@@ -1,0 +1,7 @@
+# Local dev secrets for `wrangler dev`. Copy to `.dev.vars` (gitignored) and fill in.
+# `.dev.vars` overrides the matching [vars] in wrangler.toml for local dev only.
+#
+# Google OAuth client secret for the "EVO UseCSV" client (GCP evo-platform-193721).
+# Paste the value you copied when the client/secret was created. For deployed
+# envs set it instead with:  wrangler secret put GOOGLE_CLIENT_SECRET
+GOOGLE_CLIENT_SECRET=
