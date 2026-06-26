@@ -8,10 +8,16 @@ import { api } from "./api";
  * must follow itself.
  *
  * @param returnTo optional in-app path to land on after a successful login.
+ * @param inviteToken optional invite token threaded through OAuth state so the
+ *   callback's invite-acceptance branch can materialize the membership.
  */
-export function googleLoginHref(returnTo?: string): string {
+export function googleLoginHref(returnTo?: string, inviteToken?: string): string {
   const base = "/api/auth/google/login";
-  return returnTo ? `${base}?return_to=${encodeURIComponent(returnTo)}` : base;
+  const params = new URLSearchParams();
+  if (returnTo) params.set("return_to", returnTo);
+  if (inviteToken) params.set("invite_token", inviteToken);
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
 }
 
 /**

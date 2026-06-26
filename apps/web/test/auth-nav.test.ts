@@ -27,6 +27,18 @@ describe("googleLoginHref", () => {
       "/api/auth/google/login?return_to=%2Fadmin%2Fimporters%3Fshow%3Darchived",
     );
   });
+
+  it("appends an invite_token alongside return_to", () => {
+    expect(googleLoginHref("/admin/importers", "tok123")).toBe(
+      "/api/auth/google/login?return_to=%2Fadmin%2Fimporters&invite_token=tok123",
+    );
+  });
+
+  it("appends an invite_token without a return_to", () => {
+    expect(googleLoginHref(undefined, "tok123")).toBe(
+      "/api/auth/google/login?invite_token=tok123",
+    );
+  });
 });
 
 describe("logout", () => {

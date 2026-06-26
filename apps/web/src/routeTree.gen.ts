@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InvitesTokenRouteImport } from './routes/invites.$token'
+import { Route as AuthedAdminSettingsRouteImport } from './routes/_authed/admin/settings'
 import { Route as AuthedAdminImportersIndexRouteImport } from './routes/_authed/admin/importers.index'
 import { Route as AuthedAdminImportersIdRouteImport } from './routes/_authed/admin/importers.$id'
 import { Route as AuthedAdminImportersIdUploadRouteImport } from './routes/_authed/admin/importers.$id_.upload'
@@ -29,6 +31,16 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const InvitesTokenRoute = InvitesTokenRouteImport.update({
+  id: '/invites/$token',
+  path: '/invites/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedAdminSettingsRoute = AuthedAdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
+  getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedAdminImportersIndexRoute =
   AuthedAdminImportersIndexRouteImport.update({
@@ -51,6 +63,8 @@ const AuthedAdminImportersIdUploadRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/invites/$token': typeof InvitesTokenRoute
+  '/admin/settings': typeof AuthedAdminSettingsRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/admin/importers/': typeof AuthedAdminImportersIndexRoute
   '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
@@ -58,6 +72,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/invites/$token': typeof InvitesTokenRoute
+  '/admin/settings': typeof AuthedAdminSettingsRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/admin/importers': typeof AuthedAdminImportersIndexRoute
   '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
@@ -67,6 +83,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/invites/$token': typeof InvitesTokenRoute
+  '/_authed/admin/settings': typeof AuthedAdminSettingsRoute
   '/_authed/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/_authed/admin/importers/': typeof AuthedAdminImportersIndexRoute
   '/_authed/admin/importers/$id_/upload': typeof AuthedAdminImportersIdUploadRoute
@@ -76,6 +94,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/invites/$token'
+    | '/admin/settings'
     | '/admin/importers/$id'
     | '/admin/importers/'
     | '/admin/importers/$id/upload'
@@ -83,6 +103,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/invites/$token'
+    | '/admin/settings'
     | '/admin/importers/$id'
     | '/admin/importers'
     | '/admin/importers/$id/upload'
@@ -91,6 +113,8 @@ export interface FileRouteTypes {
     | '/'
     | '/_authed'
     | '/login'
+    | '/invites/$token'
+    | '/_authed/admin/settings'
     | '/_authed/admin/importers/$id'
     | '/_authed/admin/importers/'
     | '/_authed/admin/importers/$id_/upload'
@@ -100,6 +124,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  InvitesTokenRoute: typeof InvitesTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -124,6 +149,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/invites/$token': {
+      id: '/invites/$token'
+      path: '/invites/$token'
+      fullPath: '/invites/$token'
+      preLoaderRoute: typeof InvitesTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/admin/settings': {
+      id: '/_authed/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AuthedAdminSettingsRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/admin/importers/': {
       id: '/_authed/admin/importers/'
@@ -150,12 +189,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthedRouteChildren {
+  AuthedAdminSettingsRoute: typeof AuthedAdminSettingsRoute
   AuthedAdminImportersIdRoute: typeof AuthedAdminImportersIdRoute
   AuthedAdminImportersIndexRoute: typeof AuthedAdminImportersIndexRoute
   AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAdminSettingsRoute: AuthedAdminSettingsRoute,
   AuthedAdminImportersIdRoute: AuthedAdminImportersIdRoute,
   AuthedAdminImportersIndexRoute: AuthedAdminImportersIndexRoute,
   AuthedAdminImportersIdUploadRoute: AuthedAdminImportersIdUploadRoute,
@@ -168,6 +209,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
+  InvitesTokenRoute: InvitesTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

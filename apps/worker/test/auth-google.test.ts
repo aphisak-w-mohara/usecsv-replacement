@@ -31,8 +31,8 @@ function mockTokenEndpoint(idToken: string) {
 }
 
 /** Start the login leg and pull the `state` out of the 302 Location. */
-async function startLoginAndGetState(): Promise<string> {
-  const res = await SELF.fetch("https://example.com/api/auth/google/login", {
+async function startLoginAndGetState(query = ""): Promise<string> {
+  const res = await SELF.fetch(`https://example.com/api/auth/google/login${query}`, {
     redirect: "manual",
   });
   expect(res.status).toBe(302);
@@ -157,6 +157,110 @@ describe("GET /api/auth/google/callback — closed-signup gate", () => {
       { redirect: "manual" },
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/auth/google/callback — invite acceptance (branch 3)", () => {
+  it("materializes a user + membership and marks accepted_at for a matching pending invite", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const inviteToken = "invite-token-junior";
+    await env.DB.prepare(
+      `INSERT INTO invites
+         (id, project_id, email, role, token, invited_by, created_at, expires_at)
+       VALUES (?, 'proj_evo', 'junior@mohara.co', 'member', ?, 'usr_dev', ?, ?)`,
+    )
+      .bind("inv_junior", inviteToken, now, now + 7 * 24 * 60 * 60)
+      .run();
+
+    const state = await startLoginAndGetState(
+      `?invite_token=${inviteToken}&return_to=/admin/importers`,
+    );
+    mockTokenEndpoint(
+      fakeIdToken({
+        aud: env.GOOGLE_CLIENT_ID,
+        iss: "https://accounts.google.com",
+        sub: "google-sub-junior-555",
+        email: "junior@mohara.co",
+        email_verified: true,
+        name: "Junior Dev",
+      }),
+    );
+
+    const res = await SELF.fetch(
+      `https://example.com/api/auth/google/callback?code=fake&state=${state}`,
+      { redirect: "manual" },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/admin/importers");
+    expect(res.headers.get("Set-Cookie")).toMatch(/evocsv-session=/);
+
+    // A users row was created for junior, bound to the google_sub.
+    const user = await env.DB.prepare(
+      "SELECT id, google_sub FROM users WHERE email = 'junior@mohara.co'",
+    ).first<{ id: string; google_sub: string }>();
+    expect(user?.google_sub).toBe("google-sub-junior-555");
+
+    // A membership at the invited role exists.
+    const membership = await env.DB.prepare(
+      "SELECT role FROM memberships WHERE project_id = 'proj_evo' AND user_id = ?",
+    )
+      .bind(user!.id)
+      .first<{ role: string }>();
+    expect(membership?.role).toBe("member");
+
+    // The invite is now accepted.
+    const invite = await env.DB.prepare(
+      "SELECT accepted_at FROM invites WHERE id = 'inv_junior'",
+    ).first<{ accepted_at: number | null }>();
+    expect(invite?.accepted_at).not.toBeNull();
+  });
+
+  it("rejects (403) when the Google email does not match the invite email; creates no rows", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const inviteToken = "invite-token-mismatch";
+    await env.DB.prepare(
+      `INSERT INTO invites
+         (id, project_id, email, role, token, invited_by, created_at, expires_at)
+       VALUES (?, 'proj_evo', 'invited@mohara.co', 'member', ?, 'usr_dev', ?, ?)`,
+    )
+      .bind("inv_mismatch", inviteToken, now, now + 7 * 24 * 60 * 60)
+      .run();
+
+    const before = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE email = 'wrongperson@example.com'",
+    ).first<{ n: number }>();
+
+    const state = await startLoginAndGetState(`?invite_token=${inviteToken}`);
+    mockTokenEndpoint(
+      fakeIdToken({
+        aud: env.GOOGLE_CLIENT_ID,
+        iss: "https://accounts.google.com",
+        sub: "google-sub-wrongperson",
+        email: "wrongperson@example.com",
+        email_verified: true,
+        name: "Wrong Person",
+      }),
+    );
+
+    const res = await SELF.fetch(
+      `https://example.com/api/auth/google/callback?code=fake&state=${state}`,
+      { redirect: "manual" },
+    );
+    // Email isn't a member, isn't bound, and the invite token doesn't match this
+    // email → falls through to the closed-signup 403.
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+
+    const after = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE email = 'wrongperson@example.com'",
+    ).first<{ n: number }>();
+    expect(after?.n).toBe(before?.n);
+
+    // Invite remains pending.
+    const invite = await env.DB.prepare(
+      "SELECT accepted_at FROM invites WHERE id = 'inv_mismatch'",
+    ).first<{ accepted_at: number | null }>();
+    expect(invite?.accepted_at).toBeNull();
   });
 });
 

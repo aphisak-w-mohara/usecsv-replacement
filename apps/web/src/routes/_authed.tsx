@@ -1,4 +1,4 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { api } from "../lib/api";
 import { logout } from "../lib/auth-nav";
 
@@ -41,6 +41,14 @@ function AuthedLayout() {
           <span className="text-xs text-slate-500">{me.environment_id}</span>
         </div>
         <div className="flex items-center gap-3">
+          {me.role === "owner" && (
+            <Link
+              to="/admin/settings"
+              className="text-sm text-slate-600 hover:text-slate-900 hover:underline"
+            >
+              Settings
+            </Link>
+          )}
           <span className="text-sm text-slate-600">{me.user.name || me.user.email}</span>
           <button
             type="button"

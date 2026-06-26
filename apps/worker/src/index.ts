@@ -5,6 +5,7 @@ import { dispatchBatch } from "./lib/dispatch.js";
 import { requireSession } from "./middleware/require-session.js";
 import { authRoutes } from "./routes/auth.js";
 import { importersRoutes } from "./routes/importers.js";
+import { projectsRoutes, publicInvitesRoutes } from "./routes/invites.js";
 import { uploadsRoutes } from "./routes/uploads.js";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -12,9 +13,13 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
   // Auth routes (login / callback / logout) must be reachable unauthenticated,
   // so they mount BEFORE the session gate.
   .route("/api/auth", authRoutes)
+  // Public invite lookup: an invitee previews the invite before signing in, so
+  // it also mounts BEFORE the session gate.
+  .route("/api/invites", publicInvitesRoutes)
   .use("/api/*", requireSession)
   .get("/api/me", (c) => c.json(c.get("session")))
   .route("/api/importers", importersRoutes)
+  .route("/api/projects", projectsRoutes)
   .route("/api/uploads", uploadsRoutes);
 
 export type AppType = typeof app;
