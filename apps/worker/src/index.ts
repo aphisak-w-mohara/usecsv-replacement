@@ -3,9 +3,11 @@ import { Hono } from "hono";
 import type { Env, Variables } from "./env.js";
 import { dispatchBatch } from "./lib/dispatch.js";
 import { requireSession } from "./middleware/require-session.js";
+import { withEnvironment } from "./middleware/with-environment.js";
 import { authRoutes } from "./routes/auth.js";
 import { importersRoutes } from "./routes/importers.js";
 import { projectsRoutes, publicInvitesRoutes } from "./routes/invites.js";
+import { meRoutes } from "./routes/me.js";
 import { uploadsRoutes } from "./routes/uploads.js";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
@@ -17,7 +19,16 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
   // it also mounts BEFORE the session gate.
   .route("/api/invites", publicInvitesRoutes)
   .use("/api/*", requireSession)
-  .get("/api/me", (c) => c.json(c.get("session")))
+  .route("/api/me", meRoutes)
+  // Env-scoped data: a member must hold a grant for the active environment, else
+  // 404 (IDOR). Owners bypass. Project-level routes (`/api/projects`) are NOT
+  // env-gated — they're owner-only via `requireProjectOwner` instead.
+  // Both the bare collection path and the `/*` subtree are gated — a bare
+  // `GET /api/importers` doesn't match the `/*` wildcard on its own.
+  .use("/api/importers", withEnvironment)
+  .use("/api/importers/*", withEnvironment)
+  .use("/api/uploads", withEnvironment)
+  .use("/api/uploads/*", withEnvironment)
   .route("/api/importers", importersRoutes)
   .route("/api/projects", projectsRoutes)
   .route("/api/uploads", uploadsRoutes);

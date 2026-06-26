@@ -164,6 +164,126 @@ export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>(
       console.error("DB error in GET /api/projects/:id/members:", err);
       return c.json({ error: "Database error listing members" }, 500);
     }
+  })
+  // --- Environment grants (PRD-004 Story 4) ---
+  // The matrix data for Settings → Environments: every environment in the
+  // project (columns) × every member (rows), with the granted env ids per row.
+  // Owners are always treated as fully-granted (their rows carry every env id);
+  // the UI renders those cells read-only.
+  .get("/:id/grants", async (c) => {
+    const projectId = c.req.param("id");
+
+    try {
+      const envs = await c.env.DB.prepare(
+        `SELECT id, slug, name FROM environments
+         WHERE project_id = ?
+         ORDER BY is_default DESC, slug ASC`,
+      )
+        .bind(projectId)
+        .all<{ id: string; slug: string; name: string }>();
+
+      const members = await c.env.DB.prepare(
+        `SELECT u.id AS user_id, u.email, m.role
+         FROM memberships m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.project_id = ?
+         ORDER BY u.email ASC`,
+      )
+        .bind(projectId)
+        .all<{ user_id: string; email: string; role: "owner" | "member" }>();
+
+      const grants = await c.env.DB.prepare(
+        "SELECT user_id, environment_id FROM environment_grants WHERE project_id = ?",
+      )
+        .bind(projectId)
+        .all<{ user_id: string; environment_id: string }>();
+
+      const allEnvIds = envs.results.map((e) => e.id);
+      const grantsByUser = new Map<string, string[]>();
+      for (const g of grants.results) {
+        const list = grantsByUser.get(g.user_id) ?? [];
+        list.push(g.environment_id);
+        grantsByUser.set(g.user_id, list);
+      }
+
+      const rows = members.results.map((m) => ({
+        user_id: m.user_id,
+        email: m.email,
+        role: m.role,
+        // Owners implicitly have every env; members only their granted ids.
+        granted_env_ids: m.role === "owner" ? allEnvIds : (grantsByUser.get(m.user_id) ?? []),
+      }));
+
+      return c.json({ environments: envs.results, rows });
+    } catch (err) {
+      console.error("DB error in GET /api/projects/:id/grants:", err);
+      return c.json({ error: "Database error listing grants" }, 500);
+    }
+  })
+  .put("/:id/environments/:env_id/grants/:user_id", async (c) => {
+    const projectId = c.req.param("id");
+    const envId = c.req.param("env_id");
+    const userId = c.req.param("user_id");
+    const session = c.get("session");
+
+    try {
+      // Target must be a member of this project. 404 (not 403) on a stranger.
+      const membership = await c.env.DB.prepare(
+        "SELECT role FROM memberships WHERE project_id = ? AND user_id = ?",
+      )
+        .bind(projectId, userId)
+        .first<{ role: "owner" | "member" }>();
+      if (!membership) {
+        return c.json({ error: "Member not found" }, 404);
+      }
+      if (membership.role === "owner") {
+        return c.json({ error: "Owners always have access to all environments." }, 400);
+      }
+
+      // Environment must belong to this project.
+      const envRow = await c.env.DB.prepare(
+        "SELECT id FROM environments WHERE id = ? AND project_id = ?",
+      )
+        .bind(envId, projectId)
+        .first<{ id: string }>();
+      if (!envRow) {
+        return c.json({ error: "Environment not found" }, 404);
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      await c.env.DB.prepare(
+        `INSERT INTO environment_grants
+           (project_id, user_id, environment_id, granted_by, granted_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (project_id, user_id, environment_id) DO NOTHING`,
+      )
+        .bind(projectId, userId, envId, session.user.id, now)
+        .run();
+
+      return c.body(null, 204);
+    } catch (err) {
+      console.error("DB error in PUT grants:", err);
+      return c.json({ error: "Database error creating grant" }, 500);
+    }
+  })
+  .delete("/:id/environments/:env_id/grants/:user_id", async (c) => {
+    const projectId = c.req.param("id");
+    const envId = c.req.param("env_id");
+    const userId = c.req.param("user_id");
+
+    try {
+      await c.env.DB.prepare(
+        `DELETE FROM environment_grants
+           WHERE project_id = ? AND user_id = ? AND environment_id = ?`,
+      )
+        .bind(projectId, userId, envId)
+        .run();
+
+      return c.body(null, 204);
+    } catch (err) {
+      console.error("DB error in DELETE grants:", err);
+      return c.json({ error: "Database error revoking grant" }, 500);
+    }
   });
 
 /**

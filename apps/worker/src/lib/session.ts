@@ -78,6 +78,34 @@ export async function getSession(env: Env, token: string): Promise<SessionRow | 
   return bumped;
 }
 
+/**
+ * Patch fields on an existing session row in place (e.g. switching the active
+ * environment) while preserving + bumping the rolling 14-day TTL. No-op if the
+ * token has no row. Returns the updated row, or null on a miss.
+ */
+export async function updateSession(
+  env: Env,
+  token: string,
+  patch: Partial<Pick<SessionRow, "project_id" | "environment_id" | "role">>,
+): Promise<SessionRow | null> {
+  const raw = await env.SESSIONS.get(sessionKey(token));
+  if (!raw) return null;
+
+  let row: SessionRow;
+  try {
+    row = JSON.parse(raw) as SessionRow;
+  } catch {
+    return null;
+  }
+
+  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const updated: SessionRow = { ...row, ...patch, expires_at: expiresAt };
+  await env.SESSIONS.put(sessionKey(token), JSON.stringify(updated), {
+    expirationTtl: SESSION_TTL_SECONDS,
+  });
+  return updated;
+}
+
 export async function deleteSession(env: Env, token: string): Promise<void> {
   await env.SESSIONS.delete(sessionKey(token));
 }

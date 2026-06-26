@@ -1,6 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import {
+  type GrantEnv,
+  type GrantRow,
+  EnvironmentsSection,
+  toggleGrant,
+} from "../../../components/settings/environments-section";
+import {
   type CreatedInvite,
   type Member,
   MembersSection,
@@ -25,6 +31,11 @@ function SettingsRoute() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdInvite, setCreatedInvite] = useState<CreatedInvite | null>(null);
 
+  const [grantEnvs, setGrantEnvs] = useState<GrantEnv[]>([]);
+  const [grantRows, setGrantRows] = useState<GrantRow[]>([]);
+  const [grantsLoading, setGrantsLoading] = useState(true);
+  const [grantsError, setGrantsError] = useState<string | null>(null);
+
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -46,10 +57,50 @@ function SettingsRoute() {
     }
   }, [projectId]);
 
+  const reloadGrants = useCallback(async () => {
+    setGrantsLoading(true);
+    setGrantsError(null);
+    try {
+      const res = await api.api.projects[":id"].grants.$get({ param: { id: projectId } });
+      if (!res.ok) throw new Error(`Failed to load grants: ${res.status}`);
+      const data = await res.json();
+      setGrantEnvs(data.environments as GrantEnv[]);
+      setGrantRows(data.rows as GrantRow[]);
+    } catch (err) {
+      setGrantsError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setGrantsLoading(false);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     if (!isOwner) return;
     void reload();
-  }, [isOwner, reload]);
+    void reloadGrants();
+  }, [isOwner, reload, reloadGrants]);
+
+  async function handleToggleGrant(userId: string, envId: string, granted: boolean) {
+    // Optimistic flip; revert the cell on error.
+    const previous = grantRows;
+    setGrantRows((rows) => toggleGrant(rows, userId, envId, granted));
+    setGrantsError(null);
+    try {
+      const res = granted
+        ? await api.api.projects[":id"].environments[":env_id"].grants[":user_id"].$put({
+            param: { id: projectId, env_id: envId, user_id: userId },
+          })
+        : await api.api.projects[":id"].environments[":env_id"].grants[":user_id"].$delete({
+            param: { id: projectId, env_id: envId, user_id: userId },
+          });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Failed to update grant: ${res.status}`);
+      }
+    } catch (err) {
+      setGrantRows(previous);
+      setGrantsError(err instanceof Error ? err.message : "Unknown error");
+    }
+  }
 
   async function handleCreate(email: string, role: "owner" | "member") {
     setCreating(true);
@@ -117,6 +168,13 @@ function SettingsRoute() {
         onCreate={handleCreate}
         onRevoke={handleRevoke}
         onDismissCreated={() => setCreatedInvite(null)}
+      />
+      <EnvironmentsSection
+        environments={grantEnvs}
+        rows={grantRows}
+        loading={grantsLoading}
+        error={grantsError}
+        onToggle={handleToggleGrant}
       />
     </div>
   );
