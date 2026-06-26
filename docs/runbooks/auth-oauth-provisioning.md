@@ -24,11 +24,33 @@ Callback path is fixed in code: **`/api/auth/google/callback`**. Scopes:
 `openid email profile`. The Google `hd` hint is sent automatically when the
 project has an `allowed_email_domain` set.
 
+## Multi-domain client access — leave `allowed_email_domain` UNSET
+
+This tool invites users from **different domains** (your `@mohara.co` team + each
+client's own Google Workspace + Gmail). Any Google account can authenticate;
+**our D1 invite list is the real gate** (only invited/member emails get past the
+closed-signup check — everyone else is 403'd with no row created).
+
+- **Default / recommended: leave each project's `allowed_email_domain` unset.**
+  Then any Google account can *authenticate*, and authorization is controlled
+  entirely by who you've invited in Settings → Members. This is what lets client
+  accounts on other domains in.
+- **Only set `allowed_email_domain`** when you deliberately want to lock a single
+  project to one workspace (e.g. an internal-only project pinned to `mohara.co`).
+  Setting it sends Google the `hd` hint **and** rejects any sign-in whose email
+  domain ≠ the value — which will block client domains. Don't set it on
+  client-facing projects.
+
+So the OAuth consent screen is **External** (any domain can reach the login) and
+`allowed_email_domain` stays empty (D1 invites authorize). Belt: invites
+themselves are also domain-checked when `allowed_email_domain` is set, so the two
+move together.
+
 ## Steps
 
 ### 1. Google Cloud — OAuth client
 1. [console.cloud.google.com](https://console.cloud.google.com) → create/select a project.
-2. **APIs & Services → OAuth consent screen** → pick **Internal** if you're on a Google Workspace and want to lock to it (pairs with `allowed_email_domain`); otherwise External. Fill app name + support email.
+2. **APIs & Services → OAuth consent screen** → choose **External**. This is required so users from **other Google Workspace domains (your clients) and Gmail** can sign in — "Internal" restricts to *your own* Workspace only and would block every client. Fill app name + support email. (External apps may show an "unverified app" interstitial until you submit for Google verification; for a known-users internal tool that's usually acceptable, or verify later.)
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application.**
 4. **Authorized redirect URIs** — add one per environment, each ending in `/api/auth/google/callback`:
    - local: `http://localhost:8787/api/auth/google/callback`
