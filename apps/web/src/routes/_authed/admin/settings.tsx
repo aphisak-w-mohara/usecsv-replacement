@@ -12,6 +12,7 @@ import {
   MembersSection,
   type PendingInvite,
 } from "../../../components/settings/members-section";
+import { ProjectSection } from "../../../components/settings/project-section";
 import { api } from "../../../lib/api";
 
 export const Route = createFileRoute("/_authed/admin/settings")({
@@ -35,6 +36,12 @@ function SettingsRoute() {
   const [grantRows, setGrantRows] = useState<GrantRow[]>([]);
   const [grantsLoading, setGrantsLoading] = useState(true);
   const [grantsError, setGrantsError] = useState<string | null>(null);
+
+  const [allowedDomain, setAllowedDomain] = useState<string | null>(null);
+  const [mismatchedCount, setMismatchedCount] = useState(0);
+  const [projectLoading, setProjectLoading] = useState(true);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -73,11 +80,51 @@ function SettingsRoute() {
     }
   }, [projectId]);
 
+  const reloadProject = useCallback(async () => {
+    setProjectLoading(true);
+    setProjectError(null);
+    try {
+      const res = await api.api.projects[":id"].$get({ param: { id: projectId } });
+      if (!res.ok) throw new Error(`Failed to load project: ${res.status}`);
+      const data = await res.json();
+      setAllowedDomain(data.allowed_email_domain);
+      setMismatchedCount(data.mismatched_member_count);
+    } catch (err) {
+      setProjectError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setProjectLoading(false);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     if (!isOwner) return;
     void reload();
     void reloadGrants();
-  }, [isOwner, reload, reloadGrants]);
+    void reloadProject();
+  }, [isOwner, reload, reloadGrants, reloadProject]);
+
+  async function handleSaveDomain(domain: string | null) {
+    setProjectSaving(true);
+    setProjectError(null);
+    try {
+      const res = await api.api.projects[":id"].$patch({
+        param: { id: projectId },
+        json: { allowed_email_domain: domain },
+      });
+      if (res.status === 400) {
+        const body = (await res.json()) as { error?: string };
+        setProjectError(body.error ?? "Enter a valid domain like `mohara.co`.");
+        return;
+      }
+      if (!res.ok) throw new Error(`Failed to save domain: ${res.status}`);
+      // Re-read to pick up the normalized value + refreshed mismatch count.
+      await reloadProject();
+    } catch (err) {
+      setProjectError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setProjectSaving(false);
+    }
+  }
 
   async function handleToggleGrant(userId: string, envId: string, granted: boolean) {
     // Optimistic flip; revert the cell on error.
@@ -157,6 +204,14 @@ function SettingsRoute() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
+      <ProjectSection
+        allowedEmailDomain={allowedDomain}
+        mismatchedMemberCount={mismatchedCount}
+        loading={projectLoading}
+        saving={projectSaving}
+        error={projectError}
+        onSave={handleSaveDomain}
+      />
       <MembersSection
         members={members}
         invites={invites}

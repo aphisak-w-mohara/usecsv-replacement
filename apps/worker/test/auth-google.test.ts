@@ -264,6 +264,119 @@ describe("GET /api/auth/google/callback — invite acceptance (branch 3)", () =>
   });
 });
 
+describe("GET /api/auth/google/callback — allowed_email_domain enforcement (Story 5)", () => {
+  // The restriction is shared D1 state; clear it after each test in this block.
+  afterEach(async () => {
+    await env.DB.prepare(
+      "UPDATE projects SET allowed_email_domain = NULL WHERE id = 'proj_evo'",
+    ).run();
+  });
+
+  async function setDomain(domain: string | null) {
+    await env.DB.prepare(
+      "UPDATE projects SET allowed_email_domain = ? WHERE id = 'proj_evo'",
+    )
+      .bind(domain)
+      .run();
+  }
+
+  it("login redirect includes the hd hint when a domain is set", async () => {
+    await setDomain("mohara.co");
+    const res = await SELF.fetch("https://example.com/api/auth/google/login", {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    const url = new URL(res.headers.get("Location")!);
+    expect(url.searchParams.get("hd")).toBe("mohara.co");
+  });
+
+  it("rejects a Workspace token whose hd mismatches → 403, no user row", async () => {
+    await setDomain("mohara.co");
+    const before = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE email = 'elsewhere@otherco.com'",
+    ).first<{ n: number }>();
+
+    const state = await startLoginAndGetState();
+    mockTokenEndpoint(
+      fakeIdToken({
+        aud: env.GOOGLE_CLIENT_ID,
+        iss: "https://accounts.google.com",
+        sub: "google-sub-otherco",
+        email: "elsewhere@otherco.com",
+        email_verified: true,
+        hd: "otherco.com",
+        name: "Else Where",
+      }),
+    );
+
+    const res = await SELF.fetch(
+      `https://example.com/api/auth/google/callback?code=fake&state=${state}`,
+      { redirect: "manual" },
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+
+    const after = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM users WHERE email = 'elsewhere@otherco.com'",
+    ).first<{ n: number }>();
+    expect(after?.n).toBe(before?.n);
+  });
+
+  it("rejects a personal (gmail) token with no hd claim → 403, no user row", async () => {
+    await setDomain("mohara.co");
+    const before = await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first<{
+      n: number;
+    }>();
+
+    const state = await startLoginAndGetState();
+    mockTokenEndpoint(
+      fakeIdToken({
+        aud: env.GOOGLE_CLIENT_ID,
+        iss: "https://accounts.google.com",
+        sub: "google-sub-gmail-person",
+        email: "person@gmail.com",
+        email_verified: true,
+        // no hd claim — personal account
+        name: "Gmail Person",
+      }),
+    );
+
+    const res = await SELF.fetch(
+      `https://example.com/api/auth/google/callback?code=fake&state=${state}`,
+      { redirect: "manual" },
+    );
+    expect(res.status).toBe(403);
+
+    const after = await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first<{
+      n: number;
+    }>();
+    expect(after?.n).toBe(before?.n);
+  });
+
+  it("succeeds when hd and email domain both match the restriction", async () => {
+    await setDomain("mohara.co");
+    const state = await startLoginAndGetState();
+    mockTokenEndpoint(
+      fakeIdToken({
+        aud: env.GOOGLE_CLIENT_ID,
+        iss: "https://accounts.google.com",
+        sub: "google-sub-owner-123", // seeded owner's bound sub (branch 1)
+        email: "aphisak@mohara.co",
+        email_verified: true,
+        hd: "mohara.co",
+        name: "Aphisak Naksomboon",
+      }),
+    );
+
+    const res = await SELF.fetch(
+      `https://example.com/api/auth/google/callback?code=fake&state=${state}`,
+      { redirect: "manual" },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Set-Cookie")).toMatch(/evocsv-session=/);
+  });
+});
+
 describe("safeReturnTo (open-redirect guard)", () => {
   it("passes through local absolute paths", async () => {
     const { safeReturnTo } = await import("../src/routes/auth.js");

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env, Variables } from "../env.js";
+import { domainOf } from "../lib/domain.js";
 import { randomToken } from "../lib/encoding.js";
 import { generateId } from "../lib/ids.js";
 import {
@@ -46,6 +47,14 @@ function htmlPage(title: string, body: string, status: 400 | 403): Response {
 /** The single closed-signup rejection — used by every gate branch that denies. */
 function notAuthorized(): Response {
   return htmlPage("Not authorized", "Not authorized. Ask a project owner for an invite.", 403);
+}
+
+/** The single MVP project's `allowed_email_domain` (null when unset). */
+async function loadAllowedDomain(env: Env): Promise<string | null> {
+  const project = await env.DB.prepare(
+    "SELECT allowed_email_domain FROM projects ORDER BY created_at ASC LIMIT 1",
+  ).first<{ allowed_email_domain: string | null }>();
+  return project?.allowed_email_domain ?? null;
 }
 
 type UserRow = {
@@ -129,16 +138,12 @@ export const authRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
 
     // The single MVP project's allowed_email_domain becomes the Google `hd`
     // hint when present.
-    const project = await c.env.DB.prepare(
-      "SELECT allowed_email_domain FROM projects ORDER BY created_at ASC LIMIT 1",
-    ).first<{ allowed_email_domain: string | null }>();
-
     const url = buildGoogleAuthUrl({
       clientId: c.env.GOOGLE_CLIENT_ID,
       redirectUri: c.env.GOOGLE_REDIRECT_URI,
       state,
       codeChallenge: challenge,
-      hd: project?.allowed_email_domain ?? null,
+      hd: await loadAllowedDomain(c.env),
     });
 
     return c.redirect(url, 302);
@@ -182,6 +187,23 @@ export const authRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
         "Your Google account did not return a verified email.",
         403,
       );
+    }
+
+    // --- allowed_email_domain enforcement (PRD-004 Story 5) ---
+    // If the single MVP project locks a Google Workspace domain, require BOTH
+    // the id_token `hd` claim AND the email's domain part to equal it. Either
+    // mismatch → 403, before any user row is created. Gating runs in the
+    // sign-in path so existing sessions are unaffected.
+    const allowedDomain = await loadAllowedDomain(c.env);
+    if (allowedDomain) {
+      const hd = claims.hd?.toLowerCase() ?? null;
+      if (hd !== allowedDomain || domainOf(email) !== allowedDomain) {
+        return htmlPage(
+          "Not authorized",
+          "Your Google account is not on the allowed workspace.",
+          403,
+        );
+      }
     }
 
     // --- Four-branch closed-signup gate (PRD-004 Story 2, step 5) ---

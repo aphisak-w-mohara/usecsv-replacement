@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { authedFetch, seedSession } from "./helpers/auth.js";
 
 beforeAll(() => seedSession(env));
@@ -169,6 +169,50 @@ describe("GET /api/projects/:id/members", () => {
       email: "aphisak@mohara.co",
       role: "owner",
     });
+  });
+});
+
+describe("POST /api/projects/:id/invites — allowed_email_domain enforcement (Story 5)", () => {
+  // The restriction is shared D1 state; clear it after each test in this block.
+  afterEach(async () => {
+    await env.DB.prepare("UPDATE projects SET allowed_email_domain = NULL WHERE id = ?")
+      .bind(PROJECT)
+      .run();
+  });
+
+  async function setDomain(domain: string | null) {
+    await env.DB.prepare("UPDATE projects SET allowed_email_domain = ? WHERE id = ?")
+      .bind(domain, PROJECT)
+      .run();
+  }
+
+  it("rejects an out-of-domain email with 400 and writes no invite row", async () => {
+    await setDomain("mohara.co");
+    const res = await createInvite({ email: "outsider@gmail.com", role: "member" });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toMatch(/allowed domain/i);
+
+    const row = await env.DB.prepare(
+      "SELECT id FROM invites WHERE project_id = ? AND email = 'outsider@gmail.com'",
+    )
+      .bind(PROJECT)
+      .first<{ id: string }>();
+    expect(row).toBeNull();
+  });
+
+  it("allows an in-domain email while the restriction is active", async () => {
+    await setDomain("mohara.co");
+    const res = await createInvite({ email: "indomain@mohara.co", role: "member" });
+    expect(res.status).toBe(201);
+    const body = await res.json<{ token: string }>();
+    expect(body.token).toBeTruthy();
+  });
+
+  it("allows any domain once the restriction is cleared", async () => {
+    await setDomain(null);
+    const res = await createInvite({ email: "anyone@gmail.com", role: "member" });
+    expect(res.status).toBe(201);
   });
 });
 

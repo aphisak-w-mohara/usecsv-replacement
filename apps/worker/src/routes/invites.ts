@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import { z } from "zod";
 import type { Env, Variables } from "../env.js";
+import { domainOf, isValidDomain } from "../lib/domain.js";
 import { randomToken } from "../lib/encoding.js";
 import { generateId } from "../lib/ids.js";
 
@@ -12,6 +13,15 @@ const INVITE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const inviteCreateSchema = z.object({
   email: z.string().min(1).max(320).email(),
   role: z.enum(["owner", "member"]).default("member"),
+});
+
+/**
+ * `allowed_email_domain` patch body (PRD-004 Story 5). An empty string clears
+ * the restriction (stored as NULL); any other value is validated as a domain
+ * and stored lowercased.
+ */
+const projectPatchSchema = z.object({
+  allowed_email_domain: z.string().max(255).nullable(),
 });
 
 /**
@@ -38,7 +48,74 @@ const requireProjectOwner: MiddlewareHandler<{ Bindings: Env; Variables: Variabl
  * `requireSession` at `/api/projects`; `requireProjectOwner` gates every route.
  */
 export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
+  // `requireProjectOwner` matches `/:id/*` (subtree). The bare `/:id` paths
+  // (`GET`/`PATCH`) don't match that wildcard on their own, so they're gated
+  // explicitly here too.
+  .use("/:id", requireProjectOwner)
   .use("/:id/*", requireProjectOwner)
+  // Project settings read for Settings → Project (PRD-004 Story 5). Returns the
+  // current `allowed_email_domain` plus a count of existing members whose email
+  // domain doesn't match it — drives the "they keep access" warning.
+  .get("/:id", async (c) => {
+    const projectId = c.req.param("id");
+
+    try {
+      const project = await c.env.DB.prepare(
+        "SELECT id, name, allowed_email_domain FROM projects WHERE id = ?",
+      )
+        .bind(projectId)
+        .first<{ id: string; name: string; allowed_email_domain: string | null }>();
+      if (!project) {
+        return c.json({ error: "Project not found" }, 404);
+      }
+
+      let mismatchedMemberCount = 0;
+      if (project.allowed_email_domain) {
+        const row = await c.env.DB.prepare(
+          `SELECT COUNT(*) AS n
+             FROM memberships m
+             JOIN users u ON u.id = m.user_id
+            WHERE m.project_id = ?
+              AND lower(substr(u.email, instr(u.email, '@') + 1)) <> ?`,
+        )
+          .bind(projectId, project.allowed_email_domain)
+          .first<{ n: number }>();
+        mismatchedMemberCount = row?.n ?? 0;
+      }
+
+      return c.json({
+        id: project.id,
+        name: project.name,
+        allowed_email_domain: project.allowed_email_domain,
+        mismatched_member_count: mismatchedMemberCount,
+      });
+    } catch (err) {
+      console.error("DB error in GET /api/projects/:id:", err);
+      return c.json({ error: "Database error fetching project" }, 500);
+    }
+  })
+  // Set/clear `allowed_email_domain` (PRD-004 Story 5). Empty string → NULL
+  // (clear); a set value must look like a domain and is stored lowercased.
+  .patch("/:id", zValidator("json", projectPatchSchema), async (c) => {
+    const projectId = c.req.param("id");
+    const raw = c.req.valid("json").allowed_email_domain;
+
+    const trimmed = raw?.trim() ?? "";
+    const next = trimmed.length === 0 ? null : trimmed.toLowerCase();
+    if (next !== null && !isValidDomain(next)) {
+      return c.json({ error: "Enter a valid domain like `mohara.co`." }, 400);
+    }
+
+    try {
+      await c.env.DB.prepare("UPDATE projects SET allowed_email_domain = ? WHERE id = ?")
+        .bind(next, projectId)
+        .run();
+      return c.json({ allowed_email_domain: next });
+    } catch (err) {
+      console.error("DB error in PATCH /api/projects/:id:", err);
+      return c.json({ error: "Database error updating project" }, 500);
+    }
+  })
   .post("/:id/invites", zValidator("json", inviteCreateSchema), async (c) => {
     const projectId = c.req.param("id");
     const session = c.get("session");
@@ -46,6 +123,20 @@ export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>(
     const email = c.req.valid("json").email.trim().toLowerCase();
 
     try {
+      // allowed_email_domain gate (PRD-004 Story 5): reject out-of-domain
+      // invites while the restriction is active. No row is written.
+      const project = await c.env.DB.prepare(
+        "SELECT allowed_email_domain FROM projects WHERE id = ?",
+      )
+        .bind(projectId)
+        .first<{ allowed_email_domain: string | null }>();
+      if (project?.allowed_email_domain && domainOf(email) !== project.allowed_email_domain) {
+        return c.json(
+          { error: "Email domain does not match the project's allowed domain." },
+          400,
+        );
+      }
+
       // Already a member? (join memberships → users by email)
       const member = await c.env.DB.prepare(
         `SELECT u.id FROM users u
