@@ -22,7 +22,9 @@ describe("POST /api/projects/:id/invites", () => {
     expect(res.status).toBe(201);
     const body = await res.json<{ token: string; expires_at: number; invite_url: string }>();
     expect(body.token).toBeTruthy();
-    expect(body.invite_url).toBe(`${env.APP_BASE_URL}/invites/${body.token}`);
+    // The invite link is built from the request's own origin so a self-hosted
+    // deployment (or local dev) hands out links that point back to itself.
+    expect(body.invite_url).toBe(`https://example.com/invites/${body.token}`);
     expect(body.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
 
     const row = await env.DB.prepare(

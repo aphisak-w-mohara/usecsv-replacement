@@ -191,11 +191,22 @@ export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>(
         .bind(id, projectId, email, role, token, session.user.id, now, expiresAt)
         .run();
 
+      // Build the link from the origin the operator is actually on, so a
+      // self-hosted deployment (or local dev) hands out links that point back to
+      // itself. Fall back to the configured APP_BASE_URL only if the request URL
+      // can't be parsed for some reason.
+      let base = c.env.APP_BASE_URL;
+      try {
+        base = new URL(c.req.url).origin;
+      } catch {
+        /* keep APP_BASE_URL fallback */
+      }
+
       return c.json(
         {
           token,
           expires_at: expiresAt,
-          invite_url: `${c.env.APP_BASE_URL}/invites/${token}`,
+          invite_url: `${base}/invites/${token}`,
         },
         201,
       );

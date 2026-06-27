@@ -124,7 +124,10 @@ describe("StepProgress", () => {
     });
     render(<StepProgress {...baseProps} apiClient={apiClient} onReset={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
-    await waitFor(() => expect(screen.getByText(/import complete/i)).toBeInTheDocument());
+    // With rejected rows the terminal state is a sober "delivered, some rejected"
+    // notice rather than a celebration.
+    await waitFor(() => expect(screen.getByText(/some rows were rejected/i)).toBeInTheDocument());
+    expect(screen.getByText(/1 row was rejected by the receiver/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /download error csv/i })).toBeInTheDocument();
   });
 

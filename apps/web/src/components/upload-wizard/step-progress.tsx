@@ -120,11 +120,18 @@ export function StepProgress({
   const delivered = status?.batches_delivered ?? 0;
   const pct = batchCount > 0 ? Math.round((delivered / batchCount) * 100) : 0;
   const isTerminal = status && ["completed", "halted", "failed"].includes(status.status);
+  // A non-terminal upload whose most recent attempt didn't get a 2xx is mid-retry.
+  // Surface that explicitly so a failing webhook doesn't read as a frozen bar.
+  const latestCode = status?.latest_attempt?.status_code ?? null;
+  const attemptFailed =
+    !isTerminal &&
+    status?.latest_attempt != null &&
+    (latestCode === null || latestCode < 200 || latestCode >= 300);
 
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h2 className="text-lg font-semibold text-slate-900">Submit &amp; deliver</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Submit</h2>
         <p className="text-sm text-slate-600">
           {editedRows.length.toLocaleString("en-US")} rows ready. Submitting persists the upload and
           delivers each batch to the importer's webhook.
@@ -176,23 +183,50 @@ export function StepProgress({
                 : " → no response"}
             </p>
           )}
+          {attemptFailed && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-medium">
+                Delivery to the webhook failed
+                {status?.latest_attempt?.status_code !== null &&
+                status?.latest_attempt?.status_code !== undefined
+                  ? ` (HTTP ${status.latest_attempt.status_code})`
+                  : " (no response)"}
+                .
+              </p>
+              <p className="mt-1 text-amber-700">
+                Retrying automatically with backoff — you can leave this page; delivery continues in
+                the background. Check the importer's receiver if this keeps failing.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       {isTerminal && status?.status === "completed" && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <p className="font-medium">🎉 Import complete</p>
+        <div
+          className={
+            status.has_row_errors
+              ? "rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+              : "rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+          }
+        >
+          <p className="font-medium">
+            {status.has_row_errors
+              ? "Import delivered — some rows were rejected"
+              : "🎉 Import complete"}
+          </p>
           {status.has_row_errors && (
             <p className="mt-1">
-              {status.row_errors.length} row{status.row_errors.length === 1 ? "" : "s"} were
-              rejected by the receiver.
+              {status.row_errors.length === 1
+                ? "1 row was rejected by the receiver."
+                : `${status.row_errors.length} rows were rejected by the receiver.`}
             </p>
           )}
           <div className="mt-3 flex gap-3">
             {status.has_row_errors && (
               <a
                 href={`/api/uploads/${uploadId}/errors.csv`}
-                className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800"
+                className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800"
               >
                 Download error CSV
               </a>

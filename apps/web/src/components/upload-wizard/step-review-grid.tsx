@@ -257,6 +257,15 @@ export function StepReviewGrid({
         </div>
       )}
 
+      {!blockedByInvalidGate && !filterInvalidRows && errorCount > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {errorRowIndices.size} row{errorRowIndices.size === 1 ? "" : "s"}{" "}
+          {errorRowIndices.size === 1 ? "has" : "have"} validation errors. This importer doesn't
+          filter invalid rows, so they'll be sent to the webhook as-is and may be rejected by the
+          receiver. Fix them above, or continue to send anyway.
+        </div>
+      )}
+
       <div ref={parentRef} className="h-[480px] overflow-auto rounded-md border border-slate-200">
         <table className="min-w-full text-xs" style={{ width: "100%" }}>
           <thead className="sticky top-0 bg-slate-100">

@@ -221,4 +221,35 @@ describe("ImporterListView", () => {
 
     expect(input.value).toBe("");
   });
+
+  it("links each importer to its detail page and offers an Upload action", () => {
+    render(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    // Regression guard: rows must be reachable (were previously dead text).
+    const nameLink = screen.getByRole("link", { name: /tenants/i });
+    expect(nameLink).toHaveAttribute("href", "/admin/importers/imp_tenants");
+    // And a direct Upload entry point exists (the wizard had no UI entry point).
+    const uploadLink = screen.getByRole("link", { name: /^upload$/i });
+    expect(uploadLink).toHaveAttribute("href", "/admin/importers/imp_tenants/upload");
+  });
+
+  it("hides the Upload action for archived importers", () => {
+    render(
+      <ImporterListView
+        importers={[{ ...tenants, archived: true }]}
+        showArchived={true}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: /^upload$/i })).not.toBeInTheDocument();
+  });
 });

@@ -5,24 +5,34 @@ import {
 } from "../src/lib/resolve-importer-environment";
 
 const ROWS: ImporterEnvironmentRow[] = [
-  { env_id: "env_staging", importer_environment: { id: "impenv_staging" } },
-  { env_id: "env_prod", importer_environment: { id: "impenv_prod" } },
+  {
+    env_id: "env_staging",
+    importer_environment: { id: "impenv_staging", batch_size: 500, filter_invalid_rows: true },
+  },
+  {
+    env_id: "env_prod",
+    importer_environment: { id: "impenv_prod", batch_size: 1000, filter_invalid_rows: false },
+  },
   { env_id: "env_unconfigured", importer_environment: null },
 ];
 
 describe("resolveImporterEnvironmentId", () => {
-  it("resolves the importer_environment id for the active environment", () => {
+  it("resolves the importer_environment id + delivery config for the active environment", () => {
     expect(resolveImporterEnvironmentId(ROWS, "env_staging")).toEqual({
       status: "resolved",
       importerEnvironmentId: "impenv_staging",
+      batchSize: 500,
+      filterInvalidRows: true,
     });
   });
 
   it("resolves a different importer_environment when the active env changes", () => {
-    // Switching the active environment must change the target env id.
+    // Switching the active environment must change the target env id + its config.
     expect(resolveImporterEnvironmentId(ROWS, "env_prod")).toEqual({
       status: "resolved",
       importerEnvironmentId: "impenv_prod",
+      batchSize: 1000,
+      filterInvalidRows: false,
     });
   });
 
@@ -41,9 +51,23 @@ describe("resolveImporterEnvironmentId", () => {
   it("never returns the seed default for a non-seed importer", () => {
     // Regression guard for #71: the wizard must not hardcode impenv_tenants_staging.
     const result = resolveImporterEnvironmentId(
-      [{ env_id: "env_staging", importer_environment: { id: "impenv_custom" } }],
+      [
+        {
+          env_id: "env_staging",
+          importer_environment: {
+            id: "impenv_custom",
+            batch_size: 250,
+            filter_invalid_rows: false,
+          },
+        },
+      ],
       "env_staging",
     );
-    expect(result).toEqual({ status: "resolved", importerEnvironmentId: "impenv_custom" });
+    expect(result).toEqual({
+      status: "resolved",
+      importerEnvironmentId: "impenv_custom",
+      batchSize: 250,
+      filterInvalidRows: false,
+    });
   });
 });

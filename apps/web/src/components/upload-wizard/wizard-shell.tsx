@@ -9,7 +9,7 @@ const STEPS: readonly Step[] = [
   { index: 0, label: "Context" },
   { index: 1, label: "Upload file" },
   { index: 2, label: "Match columns" },
-  { index: 3, label: "Review & edit" },
+  { index: 3, label: "Review & submit" },
   { index: 4, label: "Submit" },
 ] as const;
 
@@ -28,7 +28,7 @@ type WizardShellProps = {
 export function WizardShell({ activeStep, children, footer }: WizardShellProps) {
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-8">
-      <ol className="flex items-center gap-2" aria-label="Upload wizard steps">
+      <ol className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Upload wizard steps">
         {STEPS.map((step) => (
           <li
             key={step.index}

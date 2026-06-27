@@ -97,7 +97,8 @@ export function ColumnEditor({ mode, initial, saving, saveError, onSave, onCance
             />
             {!nameValid && draft.name.length > 0 && (
               <span className="text-xs text-red-700">
-                Must match <code>^[a-z][a-z0-9_]*$</code>
+                Use lowercase letters, numbers and underscores; must start with a letter (e.g.{" "}
+                <code>first_name</code>).
               </span>
             )}
           </label>

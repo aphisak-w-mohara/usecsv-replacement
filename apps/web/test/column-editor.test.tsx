@@ -45,7 +45,7 @@ describe("ColumnEditor", () => {
     fireEvent.change(screen.getByLabelText(/machine name/i), {
       target: { value: "Bad Name" },
     });
-    expect(screen.getByText(/must match/i)).toBeInTheDocument();
+    expect(screen.getByText(/lowercase letters, numbers and underscores/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add column/i })).toBeDisabled();
   });
 

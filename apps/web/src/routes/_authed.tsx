@@ -72,9 +72,9 @@ function AuthedLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex items-baseline gap-3">
-          <span className="font-semibold text-slate-900">evo-csv</span>
+          <span className="whitespace-nowrap font-semibold text-slate-900">evo-csv</span>
           <EnvSwitcher
             environments={accessible}
             currentId={me.environment_id}
