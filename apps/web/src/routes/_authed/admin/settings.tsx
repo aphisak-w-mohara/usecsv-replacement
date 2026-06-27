@@ -36,6 +36,8 @@ function SettingsRoute() {
   const [grantRows, setGrantRows] = useState<GrantRow[]>([]);
   const [grantsLoading, setGrantsLoading] = useState(true);
   const [grantsError, setGrantsError] = useState<string | null>(null);
+  const [envCreating, setEnvCreating] = useState(false);
+  const [envCreateError, setEnvCreateError] = useState<string | null>(null);
 
   const [allowedDomain, setAllowedDomain] = useState<string | null>(null);
   const [mismatchedCount, setMismatchedCount] = useState(0);
@@ -149,6 +151,29 @@ function SettingsRoute() {
     }
   }
 
+  async function handleCreateEnvironment(name: string, slug: string) {
+    setEnvCreating(true);
+    setEnvCreateError(null);
+    try {
+      const res = await api.api.projects[":id"].environments.$post({
+        param: { id: projectId },
+        json: slug ? { name, slug } : { name },
+      });
+      if (res.status === 409 || res.status === 400) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setEnvCreateError(body.error ?? "Could not create the environment.");
+        return;
+      }
+      if (!res.ok) throw new Error(`Failed to create environment: ${res.status}`);
+      // New env becomes a column in the grants matrix — refresh it.
+      await reloadGrants();
+    } catch (err) {
+      setEnvCreateError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setEnvCreating(false);
+    }
+  }
+
   async function handleCreate(email: string, role: "owner" | "member") {
     setCreating(true);
     setCreateError(null);
@@ -230,6 +255,9 @@ function SettingsRoute() {
         loading={grantsLoading}
         error={grantsError}
         onToggle={handleToggleGrant}
+        onCreate={handleCreateEnvironment}
+        creating={envCreating}
+        createError={envCreateError}
       />
     </div>
   );
