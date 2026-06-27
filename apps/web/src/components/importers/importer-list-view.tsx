@@ -17,6 +17,10 @@ type Props = {
   error?: string | null;
   onToggleArchived: (next: boolean) => void;
   onCreate: (name: string) => void;
+  /** Open an importer's detail/settings page. */
+  onOpen?: (id: string) => void;
+  /** Start the upload wizard for an importer. */
+  onUpload?: (id: string) => void;
 };
 
 function pluralize(count: number, noun: string): string {
@@ -35,6 +39,8 @@ export function ImporterListView({
   error,
   onToggleArchived,
   onCreate,
+  onOpen,
+  onUpload,
 }: Props) {
   const [name, setName] = useState("");
   const trimmed = name.trim();
@@ -103,10 +109,16 @@ export function ImporterListView({
       ) : (
         <ul className="flex flex-col divide-y divide-slate-200 rounded-md border border-slate-200">
           {importers.map((importer) => (
-            <li key={importer.id} className="flex items-center justify-between px-4 py-3">
-              <div className="flex flex-col">
+            <li key={importer.id} className="flex items-center justify-between gap-4 px-4 py-3">
+              <div className="flex min-w-0 flex-col">
                 <span className="text-sm font-medium text-slate-900">
-                  {importer.name}
+                  <button
+                    type="button"
+                    onClick={() => onOpen?.(importer.id)}
+                    className="text-left hover:underline"
+                  >
+                    {importer.name}
+                  </button>
                   {importer.archived && (
                     <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                       Archived
@@ -120,6 +132,24 @@ export function ImporterListView({
                 <span className="text-xs text-slate-400">
                   Updated {formatUpdated(importer.updated_at)}
                 </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {!importer.archived && (
+                  <button
+                    type="button"
+                    onClick={() => onUpload?.(importer.id)}
+                    className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+                  >
+                    Upload
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onOpen?.(importer.id)}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Settings
+                </button>
               </div>
             </li>
           ))}

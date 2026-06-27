@@ -63,7 +63,8 @@ function LoginRoute() {
 
   return (
     <LoginCard
-      mode={import.meta.env.MODE}
+      // Dev-only build fingerprint; never surfaced to production users.
+      mode={import.meta.env.DEV ? import.meta.env.MODE : undefined}
       onGoogleSignIn={() => void handleGoogle()}
       notice={notice}
     />

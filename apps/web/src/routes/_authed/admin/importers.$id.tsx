@@ -114,6 +114,9 @@ function ImporterDetailRoute() {
   if (!importer) {
     return (
       <div className="flex flex-col gap-4 p-6">
+        <Link to="/admin/importers" className="text-sm text-slate-500 underline">
+          ← Back to importers
+        </Link>
         <p className="text-sm text-slate-500">Loading importer…</p>
       </div>
     );
@@ -121,9 +124,20 @@ function ImporterDetailRoute() {
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      <Link to="/admin/importers" className="text-sm text-slate-500 underline">
-        ← Back to importers
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link to="/admin/importers" className="text-sm text-slate-500 underline">
+          ← Back to importers
+        </Link>
+        {!importer.archived && (
+          <Link
+            to="/admin/importers/$id/upload"
+            params={{ id: importer.id }}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+          >
+            Upload data
+          </Link>
+        )}
+      </div>
       <ImporterDetailTabs
         importerName={importer.name}
         renderTab={(tab: ImporterTabKey) => {

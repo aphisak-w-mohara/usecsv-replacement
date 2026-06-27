@@ -72,6 +72,8 @@ function ImportersIndexRoute() {
       error={error}
       onToggleArchived={setShowArchived}
       onCreate={handleCreate}
+      onOpen={(id) => void navigate({ to: "/admin/importers/$id", params: { id } })}
+      onUpload={(id) => void navigate({ to: "/admin/importers/$id/upload", params: { id } })}
     />
   );
 }
