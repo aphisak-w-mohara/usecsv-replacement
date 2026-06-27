@@ -1,5 +1,7 @@
 # Story 45 — Worker dispatches a batch and records the attempt
 
+> **Superseded 2026-06-27:** batch payloads later moved from R2 to D1 (gzipped) — see [ADR-0002](../../adr/0002-no-r2-batch-payloads-in-d1.md). The original plan below (written against R2) is preserved unchanged as the historical record of what was planned at the time.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or build to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Pin the worker's dispatch behaviour with a byte-identical snapshot test against the captured live usecsv payload, close test gaps for idempotency / signing-header presence / 16 KB truncation, and add a small structured-logging helper used by the dispatch path so `wrangler tail --format json` filters work.
