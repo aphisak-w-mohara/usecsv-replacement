@@ -10,8 +10,34 @@ import type { BuildWebhookPayloadInput } from "../lib/webhook-payload.js";
 
 const MAX_PAYLOAD_BYTES = 4 * 1024; // 4 KB
 
+// Server-side upload caps. The wizard advertises "Max 50,000 rows / 25 MB"
+// (apps/web/.../step-upload-file.tsx) but enforces it only client-side; the
+// server is authoritative, so we mirror those limits here as defence-in-depth.
+// Oversized batch payloads are stored gzipped inline in D1 and risk hitting
+// D1 statement/row-size limits, so each batch is also byte-capped.
+
+// Whole-file row ceiling — matches the client "Max 50,000 rows" promise.
+const MAX_TOTAL_ROWS = 50_000;
+// Largest batch the client is allowed to declare. The wizard uses a fixed
+// batch size of 1,000 (importers.$id_.upload.tsx); 5,000 leaves generous
+// headroom without letting a single batch grow unbounded.
+const MAX_BATCH_SIZE = 5_000;
+// Upper bound on declared batch_count. With MAX_TOTAL_ROWS rows and the
+// smallest sane batch (1 row/batch would be absurd), a generous flat cap of
+// 5,000 covers every realistic chunking of a 50k-row file.
+const MAX_BATCH_COUNT = 5_000;
+// Per-batch row ceiling on the ingest endpoint — matches MAX_BATCH_SIZE so a
+// single batch can never carry more rows than the largest declared batch_size.
+const MAX_BATCH_ROWS = 5_000;
+// Per-batch serialized-byte ceiling — mirrors the client 25 MB whole-file
+// story. No single batch may exceed the entire allowed file size.
+const MAX_BATCH_BYTES = 25 * 1024 * 1024; // 25 MB
+
 const batchIngestSchema = z.object({
-  rows: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(1),
+  rows: z
+    .array(z.record(z.string(), z.union([z.string(), z.number()])))
+    .min(1)
+    .max(MAX_BATCH_ROWS),
 });
 
 const uploadCreateSchema = z.object({
@@ -20,9 +46,9 @@ const uploadCreateSchema = z.object({
   file_size: z.number().int().nonnegative(),
   matched_columns_map: z.record(z.string(), z.string()),
   uploaded_file_headers: z.array(z.string()),
-  total_rows: z.number().int().positive(),
-  batch_size: z.number().int().positive(),
-  batch_count: z.number().int().positive(),
+  total_rows: z.number().int().positive().max(MAX_TOTAL_ROWS),
+  batch_size: z.number().int().positive().max(MAX_BATCH_SIZE),
+  batch_count: z.number().int().positive().max(MAX_BATCH_COUNT),
   user_payload: z.record(z.string(), z.unknown()).nullable(),
   metadata_payload: z.record(z.string(), z.unknown()).nullable(),
 });
@@ -49,6 +75,15 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
     }
     if (jsonByteSize(body.uploaded_file_headers) > MAX_PAYLOAD_BYTES) {
       return c.json({ error: "uploaded_file_headers too large — keep it under 4 KB" }, 400);
+    }
+
+    // Internal consistency: batch_count must be exactly the chunking of
+    // total_rows at batch_size. Capping the three independently isn't enough —
+    // a mismatch lets a client under-declare batch_count (so the final-batch
+    // trigger fires while rows are silently never sent) or over-declare empty
+    // trailing batches.
+    if (body.batch_count !== Math.ceil(body.total_rows / body.batch_size)) {
+      return c.json({ error: "batch_count must equal ceil(total_rows / batch_size)" }, 400);
     }
 
     try {
@@ -148,10 +183,17 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       return c.json({ error: "batch_index must be a positive integer" }, 400);
     }
 
+    // Serialized-byte cap: the row array is stored gzipped inline in D1, so a
+    // single oversized batch risks D1 statement/row-size limits. The zod schema
+    // already caps the row COUNT (MAX_BATCH_ROWS); this also bounds the bytes.
+    if (jsonByteSize(rows) > MAX_BATCH_BYTES) {
+      return c.json({ error: "Batch payload too large — keep each batch under 25 MB" }, 413);
+    }
+
     try {
       const upload = await c.env.DB.prepare(
         `SELECT u.id, u.numeric_id, u.file_name, u.matched_columns_map, u.uploaded_file_headers,
-                u.user_payload, u.metadata_payload, u.total_rows, u.batch_count,
+                u.user_payload, u.metadata_payload, u.total_rows, u.batch_size, u.batch_count,
                 ie.key AS importer_key
          FROM uploads u
          JOIN importer_environments ie ON ie.id = u.importer_environment_id
@@ -167,6 +209,7 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
           user_payload: string | null;
           metadata_payload: string | null;
           total_rows: number;
+          batch_size: number;
           batch_count: number;
           importer_key: string;
         }>();
@@ -176,6 +219,12 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       }
       if (batchIndex > upload.batch_count) {
         return c.json({ error: "batch_index exceeds batch_count" }, 400);
+      }
+      // A batch may never carry more rows than the upload's declared batch_size
+      // — otherwise the persisted payload contradicts the upload's row/batch
+      // accounting that the webhook (and Laravel's final-batch logic) rely on.
+      if (rows.length > upload.batch_size) {
+        return c.json({ error: "batch carries more rows than the declared batch_size" }, 400);
       }
 
       // Idempotent: if this batch is already persisted, return 204 without rewriting it.
