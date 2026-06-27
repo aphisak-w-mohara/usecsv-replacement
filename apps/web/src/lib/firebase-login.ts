@@ -3,7 +3,7 @@ import {
   isSignInWithEmailLink,
   sendSignInLinkToEmail,
   signInWithEmailLink,
-  signInWithRedirect,
+  signInWithPopup,
 } from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
 
@@ -11,9 +11,17 @@ import { getFirebaseAuth } from "./firebase";
  * doesn't carry it back, so we stash it before redirecting to the mailbox). */
 const EMAIL_LINK_KEY = "evocsv:emailForSignIn";
 
-/** Kick off the primary Google sign-in (full-page redirect). */
+/**
+ * Kick off the primary Google sign-in via a popup. We deliberately use popup,
+ * not redirect: the app is served from a different domain than Firebase's
+ * `authDomain` (single-origin worker vs. *.firebaseapp.com), and modern browsers
+ * block the third-party cookies `signInWithRedirect`'s cross-domain resolver
+ * needs — so redirect silently fails to persist the session. The popup is
+ * first-party to the auth domain and returns the credential via postMessage,
+ * which works without third-party cookies. Resolves once signed in.
+ */
 export async function startGoogleSignIn(): Promise<void> {
-  await signInWithRedirect(getFirebaseAuth(), new GoogleAuthProvider());
+  await signInWithPopup(getFirebaseAuth(), new GoogleAuthProvider());
 }
 
 /**

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock the Firebase SDK + our config wrapper so the login helpers can be tested
 // without a real Firebase project. The helpers only orchestrate the SDK calls.
 const {
-  signInWithRedirectSpy,
+  signInWithPopupSpy,
   sendSignInLinkToEmailSpy,
   signInWithEmailLinkSpy,
   isSignInWithEmailLinkSpy,
@@ -13,7 +13,7 @@ const {
 } = vi.hoisted(() => {
   const fakeAuth = { __fake: "auth" };
   return {
-    signInWithRedirectSpy: vi.fn(async (_auth: unknown, _provider: unknown) => {}),
+    signInWithPopupSpy: vi.fn(async (_auth: unknown, _provider: unknown) => ({})),
     sendSignInLinkToEmailSpy: vi.fn(async () => {}),
     signInWithEmailLinkSpy: vi.fn(async () => ({})),
     isSignInWithEmailLinkSpy: vi.fn(() => false),
@@ -25,7 +25,7 @@ const {
 
 vi.mock("firebase/auth", () => ({
   GoogleAuthProvider: googleProviderCtor,
-  signInWithRedirect: signInWithRedirectSpy,
+  signInWithPopup: signInWithPopupSpy,
   sendSignInLinkToEmail: sendSignInLinkToEmailSpy,
   signInWithEmailLink: signInWithEmailLinkSpy,
   isSignInWithEmailLink: isSignInWithEmailLinkSpy,
@@ -44,10 +44,10 @@ import {
 describe("startGoogleSignIn", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("calls signInWithRedirect with a GoogleAuthProvider", async () => {
+  it("calls signInWithPopup with a GoogleAuthProvider", async () => {
     await startGoogleSignIn();
-    expect(signInWithRedirectSpy).toHaveBeenCalledTimes(1);
-    const [auth, provider] = signInWithRedirectSpy.mock.calls[0]!;
+    expect(signInWithPopupSpy).toHaveBeenCalledTimes(1);
+    const [auth, provider] = signInWithPopupSpy.mock.calls[0]!;
     expect(auth).toBe(fakeAuth);
     expect(provider).toBeInstanceOf(googleProviderCtor);
   });

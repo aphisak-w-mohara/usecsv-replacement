@@ -78,6 +78,8 @@ function LoginRoute() {
     }
     try {
       await startGoogleSignIn();
+      // Popup resolved → the user is signed in; enter the app.
+      window.location.href = safeReturnTo(return_to);
     } catch {
       setNotice("Could not start Google sign-in. Try again.");
     }

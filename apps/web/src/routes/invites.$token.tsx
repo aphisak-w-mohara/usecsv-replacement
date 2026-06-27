@@ -50,6 +50,9 @@ function InviteAcceptRoute() {
       return;
     }
     await startGoogleSignIn();
+    // Popup resolved → signed in. Enter the app; requireAuth lazily materializes
+    // the matching invite into a membership on the first authed request.
+    window.location.href = "/admin/importers";
   }
 
   return (
