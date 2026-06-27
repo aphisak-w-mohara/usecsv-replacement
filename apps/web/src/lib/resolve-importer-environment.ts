@@ -21,11 +21,20 @@
 /** Minimal shape of one row from GET /api/importers/:importer_id/environments. */
 export type ImporterEnvironmentRow = {
   env_id: string;
-  importer_environment: { id: string } | null;
+  importer_environment: {
+    id: string;
+    batch_size: number;
+    filter_invalid_rows: boolean;
+  } | null;
 };
 
 export type ResolveResult =
-  | { status: "resolved"; importerEnvironmentId: string }
+  | {
+      status: "resolved";
+      importerEnvironmentId: string;
+      batchSize: number;
+      filterInvalidRows: boolean;
+    }
   | { status: "not-configured" }
   | { status: "not-found" };
 
@@ -36,5 +45,12 @@ export function resolveImporterEnvironmentId(
   const row = rows.find((r) => r.env_id === activeEnvironmentId);
   if (!row) return { status: "not-found" };
   if (!row.importer_environment) return { status: "not-configured" };
-  return { status: "resolved", importerEnvironmentId: row.importer_environment.id };
+  return {
+    status: "resolved",
+    importerEnvironmentId: row.importer_environment.id,
+    // Carry the env's configured delivery settings so the wizard honors them
+    // instead of hardcoding defaults.
+    batchSize: row.importer_environment.batch_size,
+    filterInvalidRows: row.importer_environment.filter_invalid_rows,
+  };
 }

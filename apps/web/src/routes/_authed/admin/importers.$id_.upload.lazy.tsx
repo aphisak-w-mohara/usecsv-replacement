@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   StepContext,
   type StepContextSubmit,
@@ -51,6 +51,10 @@ function UploadWizardRoute() {
   });
   const [importerColumns, setImporterColumns] = useState<ImporterColumn[] | null>(null);
   const [columnsError, setColumnsError] = useState<string | null>(null);
+  // Importer display name + existence guard — shown in the header and used to
+  // bail out early if the importer id in the URL doesn't resolve.
+  const [importerName, setImporterName] = useState<string | null>(null);
+  const [importerNotFound, setImporterNotFound] = useState(false);
 
   // Resolution of importer_environment_id for (this importer + active env).
   const [envResolution, setEnvResolution] = useState<ResolveResult | null>(null);
@@ -98,6 +102,32 @@ function UploadWizardRoute() {
     });
     if (!res.ok) throw new Error(`retry failed: ${res.status}`);
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    setImporterNotFound(false);
+    setImporterName(null);
+
+    async function load() {
+      try {
+        const res = await api.api.importers[":importer_id"].$get({ param: { importer_id: id } });
+        if (res.status === 404) {
+          if (!cancelled) setImporterNotFound(true);
+          return;
+        }
+        if (!res.ok) throw new Error(`Failed to load importer: ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setImporterName(data.importer.name);
+      } catch {
+        if (!cancelled) setImporterNotFound(true);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,45 +203,88 @@ function UploadWizardRoute() {
     setActiveStep(4);
   }
 
+  // --- Entry gates -----------------------------------------------------------
+  // Resolve the importer and its target environment BEFORE the operator invests
+  // effort in the wizard. Previously these only surfaced at the final step, so a
+  // missing webhook config wasted the whole flow (QA F15).
+  function Gate({ tone, children }: { tone: "error" | "warn"; children: ReactNode }) {
+    const cls =
+      tone === "error"
+        ? "rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        : "rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800";
+    return (
+      <WizardShell activeStep={0}>
+        <p className="mb-4 text-xs text-slate-500">Importer: {importerName ?? id}</p>
+        <div className={cls}>{children}</div>
+      </WizardShell>
+    );
+  }
+
+  if (importerNotFound) {
+    return <Gate tone="error">Importer not found — it may have been removed.</Gate>;
+  }
+  if (envError) {
+    return <Gate tone="error">Couldn't resolve the target environment: {envError}</Gate>;
+  }
+  if (!importerName || !envResolution || !importerColumns) {
+    if (columnsError) {
+      return <Gate tone="error">Couldn't load this importer's columns: {columnsError}</Gate>;
+    }
+    return (
+      <WizardShell activeStep={0}>
+        <p className="text-sm text-slate-500">Preparing upload…</p>
+      </WizardShell>
+    );
+  }
+  if (envResolution.status === "not-found") {
+    return (
+      <Gate tone="warn">
+        The active environment isn't available for this importer. Switch environments and try again.
+      </Gate>
+    );
+  }
+  if (envResolution.status === "not-configured") {
+    return (
+      <Gate tone="warn">
+        This importer has no webhook configured for the active environment yet. Configure it on the
+        importer's Environments tab before uploading.
+      </Gate>
+    );
+  }
+  // Past the gates: importer exists, columns loaded, target env resolved.
+  const resolved = envResolution;
+
   return (
     <WizardShell activeStep={activeStep}>
-      <p className="mb-4 text-xs text-slate-500">Importer: {id}</p>
+      <p className="mb-4 text-xs text-slate-500">Importer: {importerName}</p>
 
       {activeStep === 0 && <StepContext onSubmit={handleContextSubmit} />}
 
       {activeStep === 1 && (
-        <StepUploadFile onParsed={handleFileParsed} onBack={() => setActiveStep(0)} />
+        <StepUploadFile
+          initialResult={state.parsed}
+          onParsed={handleFileParsed}
+          onBack={() => setActiveStep(0)}
+        />
       )}
 
       {activeStep === 2 && state.parsed && (
-        <>
-          {columnsError && (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Couldn't load importer columns: {columnsError}
-            </div>
-          )}
-          {!importerColumns && !columnsError && (
-            <p className="text-sm text-slate-500">Loading importer columns…</p>
-          )}
-          {importerColumns && (
-            <StepMatchColumns
-              fileHeaders={state.parsed.headers}
-              rows={state.parsed.rows}
-              importerColumns={importerColumns}
-              onMatched={handleMatched}
-              onBack={() => setActiveStep(1)}
-            />
-          )}
-        </>
+        <StepMatchColumns
+          fileHeaders={state.parsed.headers}
+          rows={state.parsed.rows}
+          importerColumns={importerColumns}
+          onMatched={handleMatched}
+          onBack={() => setActiveStep(1)}
+        />
       )}
 
-      {activeStep === 3 && state.parsed && state.matched && importerColumns && (
+      {activeStep === 3 && state.parsed && state.matched && (
         <StepReviewGrid
           fileHeaders={state.parsed.headers}
           rows={state.parsed.rows}
           importerColumns={importerColumns}
           matched={state.matched}
-          filterInvalidRows={false}
+          filterInvalidRows={resolved.filterInvalidRows}
           disableIfAnyInvalid={false}
           onConfirmed={handleReviewed}
           onBack={() => setActiveStep(2)}
@@ -219,53 +292,29 @@ function UploadWizardRoute() {
       )}
 
       {activeStep === 4 && state.parsed && state.matched && state.context && state.editedRows && (
-        <>
-          {envError && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Couldn't resolve the target environment: {envError}
-            </div>
-          )}
-          {!envError && !envResolution && (
-            <p className="text-sm text-slate-500">Resolving target environment…</p>
-          )}
-          {!envError && envResolution?.status === "not-found" && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              The active environment isn't available for this importer. Switch environments and try
-              again.
-            </div>
-          )}
-          {!envError && envResolution?.status === "not-configured" && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              This importer has no webhook configured for the active environment yet. Configure it
-              on the importer's Environments tab before uploading.
-            </div>
-          )}
-          {!envError && envResolution?.status === "resolved" && (
-            <StepProgress
-              importerEnvironmentId={envResolution.importerEnvironmentId}
-              fileName={state.parsed.fileName}
-              fileSize={state.parsed.fileSize}
-              matched={state.matched}
-              uploadedFileHeaders={state.parsed.headers}
-              editedRows={state.editedRows}
-              batchSize={1000}
-              userPayload={state.context.userPayload}
-              metadataPayload={state.context.metadataPayload}
-              apiClient={apiClient}
-              onReset={() => {
-                setState({
-                  context: null,
-                  parsed: null,
-                  matched: null,
-                  reviewed: false,
-                  editedRows: null,
-                });
-                setActiveStep(0);
-              }}
-              onRetry={retryUpload}
-            />
-          )}
-        </>
+        <StepProgress
+          importerEnvironmentId={resolved.importerEnvironmentId}
+          fileName={state.parsed.fileName}
+          fileSize={state.parsed.fileSize}
+          matched={state.matched}
+          uploadedFileHeaders={state.parsed.headers}
+          editedRows={state.editedRows}
+          batchSize={resolved.batchSize}
+          userPayload={state.context.userPayload}
+          metadataPayload={state.context.metadataPayload}
+          apiClient={apiClient}
+          onReset={() => {
+            setState({
+              context: null,
+              parsed: null,
+              matched: null,
+              reviewed: false,
+              editedRows: null,
+            });
+            setActiveStep(0);
+          }}
+          onRetry={retryUpload}
+        />
       )}
     </WizardShell>
   );

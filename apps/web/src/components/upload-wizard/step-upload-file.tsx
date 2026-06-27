@@ -2,6 +2,8 @@ import { useState } from "react";
 import { parseFile, type ParseOutcome, type ParseSuccess } from "../../lib/parse-file";
 
 export type StepUploadFileProps = {
+  /** Previously-parsed result, so returning to this step preserves the file. */
+  initialResult?: ParseSuccess | null;
   onParsed: (result: ParseSuccess) => void;
   onBack: () => void;
 };
@@ -11,8 +13,10 @@ type State =
   | { phase: "parsing"; fileName: string }
   | { phase: "result"; outcome: ParseOutcome };
 
-export function StepUploadFile({ onParsed, onBack }: StepUploadFileProps) {
-  const [state, setState] = useState<State>({ phase: "empty" });
+export function StepUploadFile({ initialResult, onParsed, onBack }: StepUploadFileProps) {
+  const [state, setState] = useState<State>(
+    initialResult ? { phase: "result", outcome: initialResult } : { phase: "empty" },
+  );
 
   async function handleFileSelect(file: File) {
     setState({ phase: "parsing", fileName: file.name });

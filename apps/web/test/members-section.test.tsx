@@ -58,7 +58,9 @@ describe("MembersSection", () => {
       />,
     );
     expect(screen.getByText("junior@mohara.co")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /revoke/i }));
+    // Revoking is destructive, so it opens a confirm dialog before calling back.
+    await user.click(screen.getByRole("button", { name: /^revoke$/i }));
+    await user.click(screen.getByRole("button", { name: /revoke invite/i }));
     expect(onRevoke).toHaveBeenCalledWith("inv_1");
   });
 

@@ -56,15 +56,27 @@ export function MembersSection({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"owner" | "member">("member");
   const [copied, setCopied] = useState(false);
+  // The invite to confirm revoking — null when no dialog is open.
+  const [confirmingRevoke, setConfirmingRevoke] = useState<PendingInvite | null>(null);
 
   const trimmed = email.trim();
-  const canCreate = trimmed.length > 0 && !creating;
+  // Mirror the worker's contract (Zod .email()) with a pragmatic shape check so
+  // the form gives inline feedback instead of relying on the browser popup.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  const canCreate = emailValid && !creating;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canCreate) return;
     onCreate(trimmed, role);
     setEmail("");
+  }
+
+  function confirmRevoke() {
+    if (confirmingRevoke) {
+      onRevoke(confirmingRevoke.id);
+      setConfirmingRevoke(null);
+    }
   }
 
   function copyUrl() {
@@ -132,7 +144,7 @@ export function MembersSection({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onRevoke(inv.id)}
+                  onClick={() => setConfirmingRevoke(inv)}
                   className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50"
                 >
                   Revoke
@@ -154,8 +166,12 @@ export function MembersSection({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="teammate@mohara.co"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              aria-invalid={trimmed.length > 0 && !emailValid}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm aria-[invalid=true]:border-red-400"
             />
+            {trimmed.length > 0 && !emailValid && (
+              <span className="text-xs text-red-700">Enter a valid email address.</span>
+            )}
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-sm font-medium">Role</span>
@@ -215,6 +231,41 @@ export function MembersSection({
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {confirmingRevoke && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="revoke-confirm-title"
+          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4"
+        >
+          <div className="flex max-w-sm flex-col gap-4 rounded-md bg-white p-6 shadow-lg">
+            <h3 id="revoke-confirm-title" className="text-base font-semibold text-slate-900">
+              Revoke this invite?
+            </h3>
+            <p className="text-sm text-slate-600">
+              The invite link for <span className="font-medium">{confirmingRevoke.email}</span> will
+              stop working immediately. You can send a new invite later.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingRevoke(null)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRevoke}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white"
+              >
+                Revoke invite
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

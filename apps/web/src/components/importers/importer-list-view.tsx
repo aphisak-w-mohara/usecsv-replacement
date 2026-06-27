@@ -103,8 +103,14 @@ export function ImporterListView({
       ) : (
         <ul className="flex flex-col divide-y divide-slate-200 rounded-md border border-slate-200">
           {importers.map((importer) => (
-            <li key={importer.id} className="flex items-center justify-between px-4 py-3">
-              <div className="flex flex-col">
+            <li
+              key={importer.id}
+              className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
+            >
+              <a
+                href={`/admin/importers/${importer.id}`}
+                className="flex flex-1 flex-col rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              >
                 <span className="text-sm font-medium text-slate-900">
                   {importer.name}
                   {importer.archived && (
@@ -120,7 +126,15 @@ export function ImporterListView({
                 <span className="text-xs text-slate-400">
                   Updated {formatUpdated(importer.updated_at)}
                 </span>
-              </div>
+              </a>
+              {!importer.archived && (
+                <a
+                  href={`/admin/importers/${importer.id}/upload`}
+                  className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white"
+                >
+                  Upload
+                </a>
+              )}
             </li>
           ))}
         </ul>
