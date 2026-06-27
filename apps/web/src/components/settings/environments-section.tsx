@@ -1,4 +1,16 @@
+import { useState } from "react";
+
 export type GrantEnv = { id: string; slug: string; name: string };
+
+/** Client-side preview of the slug the server will derive from a name. Mirrors
+ *  the worker's `slugify` so owners see what they'll get before submitting. */
+export function previewSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export type GrantRow = {
   user_id: string;
@@ -39,14 +51,91 @@ type Props = {
   error?: string | null;
   /** Toggle a member's grant for an env. `granted` is the desired next state. */
   onToggle: (userId: string, envId: string, granted: boolean) => void;
+  /** Owner-only: create a new environment. `slug` is "" to let the server derive it. */
+  onCreate?: (name: string, slug: string) => void;
+  creating?: boolean;
+  createError?: string | null;
 };
+
+/** Owner-only inline form to add an environment to the project. */
+function AddEnvironmentForm({
+  onCreate,
+  creating,
+  createError,
+}: {
+  onCreate: (name: string, slug: string) => void;
+  creating?: boolean;
+  createError?: string | null;
+}) {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const derived = previewSlug(name);
+  const effectiveSlug = slug.trim() || derived;
+  const canSubmit = !creating && name.trim().length > 0 && effectiveSlug.length > 0;
+
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!canSubmit) return;
+        onCreate(name.trim(), slug.trim());
+        setName("");
+        setSlug("");
+      }}
+    >
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Production"
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Slug (optional)</span>
+          <input
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder={derived || "production"}
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {creating ? "Adding…" : "Add environment"}
+        </button>
+      </div>
+      {name.trim() && (
+        <p className="text-xs text-slate-500">
+          Will be created with slug <code className="text-slate-700">{effectiveSlug}</code>.
+        </p>
+      )}
+      {createError && <p className="text-xs text-red-700">{createError}</p>}
+    </form>
+  );
+}
 
 /**
  * Settings -> Environments grants matrix. Rows = members, columns = envs, cell =
  * checkbox (checked = grant exists). Owner rows are read-only (all checked,
  * faded, tooltipped) since owners always have access. Owner-only section.
  */
-export function EnvironmentsSection({ environments, rows, loading, error, onToggle }: Props) {
+export function EnvironmentsSection({
+  environments,
+  rows,
+  loading,
+  error,
+  onToggle,
+  onCreate,
+  creating,
+  createError,
+}: Props) {
   return (
     <section className="flex flex-col gap-4">
       <header>
@@ -56,6 +145,10 @@ export function EnvironmentsSection({ environments, rows, loading, error, onTogg
           every environment.
         </p>
       </header>
+
+      {onCreate && (
+        <AddEnvironmentForm onCreate={onCreate} creating={creating} createError={createError} />
+      )}
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
