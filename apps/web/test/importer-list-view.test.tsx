@@ -117,6 +117,58 @@ describe("ImporterListView", () => {
     expect(onCreate).toHaveBeenCalledWith("Properties");
   });
 
+  it("opens the importer when its name or Settings is clicked", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+        onOpen={onOpen}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Tenants" }));
+    await user.click(screen.getByRole("button", { name: /settings/i }));
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpen).toHaveBeenCalledWith("imp_tenants");
+  });
+
+  it("starts the upload wizard from a non-archived row", async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn();
+    render(
+      <ImporterListView
+        importers={[tenants]}
+        showArchived={false}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+        onUpload={onUpload}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /upload/i }));
+    expect(onUpload).toHaveBeenCalledWith("imp_tenants");
+  });
+
+  it("hides the Upload action for archived importers", () => {
+    render(
+      <ImporterListView
+        importers={[{ ...tenants, archived: true }]}
+        showArchived={true}
+        creating={false}
+        onToggleArchived={noop}
+        onCreate={noop}
+        onUpload={noop}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /upload/i })).toBeNull();
+    // Still openable via Settings even when archived.
+    expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
+  });
+
   it("calls onToggleArchived when the show-archived checkbox is toggled", async () => {
     const user = userEvent.setup();
     const onToggleArchived = vi.fn();

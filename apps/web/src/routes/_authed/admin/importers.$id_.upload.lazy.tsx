@@ -1,4 +1,4 @@
-import { createLazyFileRoute } from "@tanstack/react-router";
+import { Link, createLazyFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   StepContext,
@@ -175,7 +175,13 @@ function UploadWizardRoute() {
 
   return (
     <WizardShell activeStep={activeStep}>
-      <p className="mb-4 text-xs text-slate-500">Importer: {id}</p>
+      <Link
+        to="/admin/importers/$id"
+        params={{ id }}
+        className="mb-4 inline-block text-sm text-slate-500 underline"
+      >
+        ← Back to importer
+      </Link>
 
       {activeStep === 0 && <StepContext onSubmit={handleContextSubmit} />}
 
