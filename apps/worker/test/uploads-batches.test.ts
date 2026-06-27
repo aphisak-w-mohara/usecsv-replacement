@@ -104,4 +104,65 @@ describe("POST /api/uploads/:id/batches/:index", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it("rejects a batch with more than 5,000 rows with 400 (#77)", async () => {
+    const { upload_id } = await createUpload();
+    const rows = Array.from({ length: 5_001 }, (_, i) => ({
+      row: i + 1,
+      first_name: "A",
+      last_name: "B",
+      email: "a@b.com",
+    }));
+    const res = await authedFetch(`https://example.com/api/uploads/${upload_id}/batches/1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a batch carrying more rows than the upload's declared batch_size with 400 (#77 review)", async () => {
+    // Upload declares batch_size=2 (total_rows=3 → batch_count=2); a batch with
+    // 3 rows contradicts that accounting.
+    const res = await authedFetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...UPLOAD_BODY, total_rows: 3, batch_size: 2, batch_count: 2 }),
+    });
+    const { upload_id } = await res.json<{ upload_id: string }>();
+
+    const batchRes = await authedFetch(`https://example.com/api/uploads/${upload_id}/batches/1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rows: [
+          { row: 1, first_name: "A", last_name: "B", email: "a@b.com" },
+          { row: 2, first_name: "C", last_name: "D", email: "c@d.com" },
+          { row: 3, first_name: "E", last_name: "F", email: "e@f.com" },
+        ],
+      }),
+    });
+    expect(batchRes.status).toBe(400);
+  });
+
+  it("rejects a batch whose serialized payload exceeds 25 MB with 413 (#77)", async () => {
+    const { upload_id } = await createUpload();
+    // Stay under the 5,000-row count cap but blow past the 25 MB byte cap by
+    // packing a large string into each row (~10 KB × 3,000 rows ≈ 30 MB).
+    const big = "x".repeat(10 * 1024);
+    const rows = Array.from({ length: 3_000 }, (_, i) => ({
+      row: i + 1,
+      first_name: big,
+      last_name: "B",
+      email: "a@b.com",
+    }));
+    const res = await authedFetch(`https://example.com/api/uploads/${upload_id}/batches/1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows }),
+    });
+    expect(res.status).toBe(413);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toMatch(/too large/i);
+  });
 });

@@ -82,8 +82,16 @@ export async function recomputeUploadStatus(env: Env, uploadId: string): Promise
   }
 
   const now = Math.floor(Date.now() / 1000);
-  await env.DB.prepare("UPDATE uploads SET status = ?, updated_at = ? WHERE id = ?")
-    .bind(status, now, uploadId)
+  // Re-arm halt alerting: if an upload recovers out of 'halted' (e.g. an
+  // operator retry succeeds) and later halts again, the scheduled alerter must
+  // surface the new halt — so clear halt_alerted_at whenever status isn't halted.
+  await env.DB.prepare(
+    `UPDATE uploads
+     SET status = ?, updated_at = ?,
+         halt_alerted_at = CASE WHEN ? = 'halted' THEN halt_alerted_at ELSE NULL END
+     WHERE id = ?`,
+  )
+    .bind(status, now, status, uploadId)
     .run();
 }
 

@@ -144,6 +144,58 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("rejects total_rows above the 50,000 cap with 400 (#77)", async () => {
+    const res = await authedFetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, total_rows: 50_001 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts total_rows at exactly the 50,000 cap (boundary, #77)", async () => {
+    const res = await authedFetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...VALID_BODY,
+        total_rows: 50_000,
+        batch_size: 5000,
+        batch_count: 10,
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects batch_size above the 5,000 cap with 400 (#77)", async () => {
+    const res = await authedFetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, batch_size: 5_001 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects batch_count above the 5,000 cap with 400 (#77)", async () => {
+    const res = await authedFetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, batch_count: 5_001 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects batch_count that isn't ceil(total_rows / batch_size) with 400 (#77 review)", async () => {
+    // 5,000 rows at 1,000/batch needs 5 batches, not 2 — declaring 2 would
+    // silently drop 3,000 rows.
+    const res = await authedFetch("https://example.com/api/uploads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...VALID_BODY, total_rows: 5_000, batch_size: 1_000, batch_count: 2 }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("POST /api/uploads — idempotency", () => {

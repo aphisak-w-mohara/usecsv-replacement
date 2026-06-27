@@ -64,7 +64,11 @@ const AuthedAdminImportersIdUploadRoute =
     id: '/admin/importers/$id_/upload',
     path: '/admin/importers/$id/upload',
     getParentRoute: () => AuthedRoute,
-  } as any)
+  } as any).lazy(() =>
+    import('./routes/_authed/admin/importers.$id_.upload.lazy').then(
+      (d) => d.Route,
+    ),
+  )
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute

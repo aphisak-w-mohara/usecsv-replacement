@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same PR branch (e.g. force-pushes). Never cancel
+# a push-to-main run — that would let a broken commit land with no failing check.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    name: Build, typecheck, lint & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No version pin here — pnpm/action-setup reads the root package.json
+      # "packageManager" field, so CI uses the exact pnpm that generated the
+      # lockfile (avoids optional native-dep resolution mismatches, e.g. the
+      # rolldown platform binary).
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: pnpm
+
+      # NOT --frozen-lockfile: the lockfile is generated on macOS, and pnpm
+      # ignores package.json `supportedArchitectures` under a frozen install, so
+      # it would skip the Linux rolldown native binary the Vite build needs. A
+      # plain install honours supportedArchitectures and fetches it. The lockfile
+      # is still up to date (resolution is skipped), so this isn't lockfile drift.
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      # Worker tests run under @cloudflare/vitest-pool-workers, which reads
+      # apps/worker/wrangler.toml's [assets] dir (../web/dist). That directory
+      # MUST exist before the worker tests run, so build the web app first.
+      - name: Build web (required before worker tests — assets dir dependency)
+        run: pnpm --filter @evo-csv/web build
+
+      - name: Typecheck worker
+        run: pnpm --filter @evo-csv/worker typecheck
+
+      # Advisory for now: the repo has pre-existing biome violations (format +
+      # a11y, ~66) unrelated to current work. Lint runs and reports on every PR
+      # but does not fail the job until that debt is cleared, at which point this
+      # `continue-on-error` is removed to make lint a hard gate. Tracked in the
+      # biome-debt follow-up issue.
+      - name: Lint (advisory until pre-existing debt is cleared)
+        run: pnpm lint
+        continue-on-error: true
+
+      - name: Test (worker + web)
+        run: pnpm test
+
+      - name: Build (all workspaces)
+        run: pnpm build

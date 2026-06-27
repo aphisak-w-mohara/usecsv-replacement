@@ -1,6 +1,4 @@
 import { extensionOf, MAX_ROW_COUNT, validateFile } from "./file-validate";
-import { parseCsv } from "./parse-csv";
-import { parseXlsx } from "./parse-xlsx";
 
 export type ParsedRow = Record<string, string>;
 
@@ -40,6 +38,9 @@ export async function parseFile(file: File): Promise<ParseOutcome> {
 
   try {
     if (ext === "csv" || ext === "tsv") {
+      // PapaParse (~50 KB) is only pulled in when the user actually parses a
+      // delimited file — it stays out of the initial entry chunk.
+      const { parseCsv } = await import("./parse-csv");
       const parsed = await parseCsv(file, ext === "tsv" ? "\t" : ",");
       return finalize(file, ext, {
         headers: parsed.headers,
@@ -47,6 +48,9 @@ export async function parseFile(file: File): Promise<ParseOutcome> {
         encoding: parsed.encoding,
       });
     }
+    // SheetJS/xlsx (~400 KB) is the heaviest dep in the app; dynamic-importing it
+    // here keeps it off the critical path for everyone who never parses a workbook.
+    const { parseXlsx } = await import("./parse-xlsx");
     const parsed = await parseXlsx(file);
     return finalize(file, ext, {
       headers: parsed.headers,

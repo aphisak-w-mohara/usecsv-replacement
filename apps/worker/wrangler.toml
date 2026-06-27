@@ -1,6 +1,6 @@
 name = "evo-csv"
 main = "src/index.ts"
-compatibility_date = "2026-05-01"
+compatibility_date = "2026-03-10"
 compatibility_flags = ["nodejs_compat"]
 
 # Single-origin hosting: the built SPA ships alongside the Worker. The platform
@@ -36,6 +36,17 @@ FIREBASE_PROJECT_ID = "evo-usecsv"
 DEV_EMAIL = "aphisak@mohara.co"
 # Prod SPA origin (single-origin with the API). Used for invite links.
 APP_BASE_URL = "https://evo-csv.aphisak.workers.dev"
+
+# Workers Observability: structured logs + invocation traces in the dashboard,
+# so worker exceptions and swallowed queue errors are no longer invisible (#74).
+[observability]
+enabled = true
+
+# Scheduled (cron) maintenance worker. Every 15 minutes it (a) alerts on newly
+# halted uploads (#74) and (b) purges delivered client PII past the retention
+# window (#75). The handler is in src/index.ts (scheduled), logic in src/lib/.
+[triggers]
+crons = ["*/15 * * * *"]
 
 [[d1_databases]]
 binding = "DB"

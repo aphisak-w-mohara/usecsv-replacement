@@ -17,6 +17,14 @@ export type Env = {
   // when no `X-Dev-Email` header is present. Never consulted off `local`.
   DEV_EMAIL: string;
   APP_BASE_URL: string;
+  // Slack incoming-webhook URL the scheduled worker POSTs halt alerts to. When
+  // unset, the alerter logs via console.warn instead of throwing — alerting is
+  // best-effort, never a hard dependency of the cron run.
+  ALERT_WEBHOOK_URL?: string;
+  // Retention window (in days) for delivered batch payloads. The scheduled
+  // worker nulls out `upload_batches.payload` for `completed` uploads older than
+  // this. Unset / unparseable falls back to 30 days.
+  RETENTION_DAYS?: string;
 };
 
 export type SessionContext = {

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { dispatchBatch } from "../src/lib/dispatch";
+import { dispatchBatch, recomputeUploadStatus } from "../src/lib/dispatch";
 import { authedFetch } from "./helpers/auth.js";
 
 const UPLOAD_BODY = {
@@ -100,5 +100,29 @@ describe("dispatchBatch", () => {
       .first<{ status_code: number; response_body: string }>();
     expect(attempt?.status_code).toBe(500);
     expect(attempt?.response_body).toContain("boom");
+  });
+
+  it("re-arms halt alerting: clears halt_alerted_at when status leaves 'halted' (#74 review)", async () => {
+    const id = await seedUploadWithBatch();
+    // Simulate a prior halt that was already alerted, then a successful delivery.
+    await env.DB.prepare("UPDATE uploads SET status = 'halted', halt_alerted_at = 123 WHERE id = ?")
+      .bind(id)
+      .run();
+    const now = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      `INSERT INTO webhook_attempts
+        (id, upload_id, batch_index, attempt_number, status_code, response_body, errors_json, started_at, finished_at)
+       VALUES (?, ?, 1, 7, 200, 'ok', NULL, ?, ?)`,
+    )
+      .bind(`wha_${crypto.randomUUID()}`, id, now, now)
+      .run();
+
+    await recomputeUploadStatus(env, id);
+
+    const upload = await env.DB.prepare("SELECT status, halt_alerted_at FROM uploads WHERE id = ?")
+      .bind(id)
+      .first<{ status: string; halt_alerted_at: number | null }>();
+    expect(upload?.status).toBe("completed");
+    expect(upload?.halt_alerted_at).toBeNull();
   });
 });
