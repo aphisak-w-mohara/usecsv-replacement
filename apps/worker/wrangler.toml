@@ -1,6 +1,6 @@
 name = "evo-csv"
 main = "src/index.ts"
-compatibility_date = "2026-05-01"
+compatibility_date = "2026-03-10"
 compatibility_flags = ["nodejs_compat"]
 
 # Single-origin hosting: the built SPA ships alongside the Worker. The platform
