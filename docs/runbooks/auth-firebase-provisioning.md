@@ -18,8 +18,10 @@ Contract the code expects:
 1. [console.firebase.google.com](https://console.firebase.google.com) → open the **dedicated** project (or "Add Firebase" to the GCP project you created for evo-csv). Keep it separate from the production EVO platform project.
 2. **Build → Authentication → Get started.**
 3. **Sign-in method → enable:**
-   - **Google** (primary).
-   - **Email/Password** → also toggle on **Email link (passwordless sign-in)** (the non-Google fallback).
+   - **Google** (the only method for now).
+   - Email-link is currently **disabled** (Email/Password provider off). To bring
+     back the non-Google fallback later: enable **Email/Password** + **Email link
+     (passwordless sign-in)** here, and restore the email-link UI in the LoginCard.
 4. **Authentication → Settings → Authorized domains** → add your SPA's prod domain (`localhost` is there by default for dev).
 
 ## 2. Web app config

@@ -25,9 +25,12 @@ Use **Firebase Authentication** for *authentication only*. **Authorization stays
 entirely in D1** (closed-signup invites, roles, memberships, env grants,
 `allowed_email_domain`). Key design (locked in the grill):
 
-- **Providers:** Google primary (`signInWithRedirect`) + email-link secondary
-  (non-Google fallback; Spark caps email-LINK ~5/day → use email/password if it
-  ever exceeds that).
+- **Providers:** Google only, via `signInWithPopup`. (Popup, not redirect: the
+  SPA is served on a different domain than Firebase's `authDomain`, and browsers
+  block the third-party cookies redirect's cross-domain resolver needs.) The
+  email-link / Email-Password provider is **disabled for now** (both in the UI and
+  in the Firebase console) — re-enable the provider + restore the LoginCard
+  email-link path to bring back the non-Google fallback.
 - **Stateless:** the SPA holds the Firebase session and sends
   `Authorization: Bearer <ID token>` per request; the worker verifies it each
   request (`jose` + secure-token JWKS, `iss=https://securetoken.google.com/<project>`,
