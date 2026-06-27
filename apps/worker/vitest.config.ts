@@ -1,5 +1,10 @@
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
+// Vitest is held at 3.x with @cloudflare/vitest-pool-workers ^0.12 on purpose.
+// The vitest-4 line of the pool (0.13+) rewrote the config API (cloudflareTest
+// plugin) and DROPPED the `singleWorker` / `isolatedStorage` options this suite
+// relies on (see below). Taking vitest 4 needs that test-architecture rework, so
+// keep vitest <4 and ignore dependabot's vitest-4 bumps until then.
 export default defineWorkersConfig({
   test: {
     globalSetup: ["./test/global-setup.ts"],
