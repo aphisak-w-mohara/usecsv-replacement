@@ -31,9 +31,11 @@ ENVIRONMENT = "production"
 # expected token audience. Public value (it ships in the web config too); set
 # the deployed value via `wrangler deploy --var` or a per-env [vars] block.
 FIREBASE_PROJECT_ID = "evo-usecsv"
-# Local-only convenience: the email the `local` auth seam trusts when no
-# `X-Dev-Email` header is sent. Ignored entirely off `local`.
-DEV_EMAIL = "aphisak@mohara.co"
+# NOTE: DEV_EMAIL is intentionally NOT set here. It's a local-only convenience
+# (the email the `local` auth seam trusts) and is ignored entirely off `local`.
+# Keeping it out of the committed [vars] avoids leaking a real address (PII)
+# into `wrangler deploy`'s bindings output in CI logs. Local dev sets it via
+# apps/worker/.dev.vars; tests set it via vitest.config.ts.
 # Prod SPA origin (single-origin with the API). Used for invite links.
 APP_BASE_URL = "https://evo-csv.aphisak.workers.dev"
 

@@ -14,8 +14,9 @@ export type Env = {
   // (`https://securetoken.google.com/<id>`) and the expected audience.
   FIREBASE_PROJECT_ID: string;
   // Local/test-only convenience: the email trusted by the `local` auth seam
-  // when no `X-Dev-Email` header is present. Never consulted off `local`.
-  DEV_EMAIL: string;
+  // when no `X-Dev-Email` header is present. Never consulted off `local`, and
+  // not set in the deployed [vars] (see wrangler.toml) — hence optional.
+  DEV_EMAIL?: string;
   APP_BASE_URL: string;
   // Slack incoming-webhook URL the scheduled worker POSTs halt alerts to. When
   // unset, the alerter logs via console.warn instead of throwing — alerting is
