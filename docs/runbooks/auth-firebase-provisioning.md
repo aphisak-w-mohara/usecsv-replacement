@@ -23,15 +23,18 @@ Contract the code expects:
 4. **Authentication → Settings → Authorized domains** → add your SPA's prod domain (`localhost` is there by default for dev).
 
 ## 2. Web app config
-1. **Project settings (gear) → General → Your apps → Add app → Web (`</>`).**
-2. Register it; copy the config object. Map it to the build env (`apps/web/.env.production` or your CI vars):
-   ```
-   VITE_FIREBASE_API_KEY=...
-   VITE_FIREBASE_AUTH_DOMAIN=<project>.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=<project-id>
-   VITE_FIREBASE_APP_ID=...
-   ```
-   (All public — safe to commit to a prod env file / CI config.)
+The web app **"EVO UseCSV"** already exists in the `evo-usecsv` project. Set these
+at build time (`apps/web/.env.production` locally, or your CI build vars — note
+`.env*` is gitignored, so they're supplied per-build, not committed). All values
+are **public** (Firebase web config ships in the browser bundle by design):
+```
+VITE_FIREBASE_API_KEY=AIzaSyAnZrT1ITmRCpiS62QlJT4WJJHXYUyOcv4
+VITE_FIREBASE_AUTH_DOMAIN=evo-usecsv.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=evo-usecsv
+VITE_FIREBASE_APP_ID=1:124414392250:web:5b3a01f71c77e93ed3cf83
+```
+Leaving these blank in local dev is intentional — `pnpm dev` then uses the
+worker's `DEV_EMAIL` seam (no real Firebase needed).
 
 ## 3. Worker config + deploy
 1. In `apps/worker/wrangler.toml`, set `FIREBASE_PROJECT_ID` to `<project-id>` (replace `REPLACE_WITH_FIREBASE_PROJECT_ID`) and confirm `ENVIRONMENT="production"` (the committed default). No secret to set.

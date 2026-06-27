@@ -17,7 +17,7 @@ ENVIRONMENT = "production"
 # drives the JWKS issuer (`https://securetoken.google.com/<id>`) and the
 # expected token audience. Public value (it ships in the web config too); set
 # the deployed value via `wrangler deploy --var` or a per-env [vars] block.
-FIREBASE_PROJECT_ID = "REPLACE_WITH_FIREBASE_PROJECT_ID"
+FIREBASE_PROJECT_ID = "evo-usecsv"
 # Local-only convenience: the email the `local` auth seam trusts when no
 # `X-Dev-Email` header is sent. Ignored entirely off `local`.
 DEV_EMAIL = "aphisak@mohara.co"
