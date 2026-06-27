@@ -15,12 +15,7 @@ type Props = {
   onUpdated: (next: ImporterEnvironmentLite) => void;
 };
 
-export function SigningSection({
-  importerId,
-  envId,
-  importerEnvironment: ie,
-  onUpdated,
-}: Props) {
+export function SigningSection({ importerId, envId, importerEnvironment: ie, onUpdated }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);

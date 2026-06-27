@@ -32,8 +32,8 @@ Run from repo root unless noted.
 | Single test file | `pnpm --filter @evo-csv/worker exec vitest run path/to/file.test.ts` |
 | Filter by test name | `pnpm --filter @evo-csv/worker exec vitest run -t "pattern"` |
 | Worker typecheck (incl. tests) | `pnpm --filter @evo-csv/worker typecheck` |
-| Lint | `pnpm lint` (biome check) |
-| Format | `pnpm format` (biome format --write) |
+| Lint | `pnpm lint` (oxlint) |
+| Format | `pnpm format` (oxfmt --write) · check: `pnpm format:check` |
 | Deploy worker | `pnpm --filter @evo-csv/worker deploy` |
 
 Node ≥ 22.11, pnpm ≥ 9 (enforced in root `package.json`).
@@ -128,6 +128,7 @@ Priority / Iteration / Estimate fields are **not** part of the current conventio
 
 ## Tooling
 
-- **Formatter + linter:** Biome (config in [biome.json](biome.json)). 2-space indent, 100-col width. `noNonNullAssertion` off; `noExplicitAny` is a warning, not an error.
+- **Linter:** [oxlint](https://oxc.rs) (Rust; config in [.oxlintrc.json](.oxlintrc.json)). `correctness` rules are errors (blocking); `no-non-null-assertion` off; `typescript/no-explicit-any` is a warning. ~2x faster than biome and doesn't OOM on large trees.
+- **Formatter:** [oxfmt](https://oxc.rs) (Rust, Prettier-compatible; config in [.oxfmtrc.json](.oxfmtrc.json)). 2-space indent, 100-col width. `pnpm format` to write, `pnpm format:check` to verify (CI gate). Markdown/PRDs are not formatted (see `ignorePatterns`).
 - **TypeScript:** strict + `noUncheckedIndexedAccess` + `verbatimModuleSyntax`. Base config in [tsconfig.base.json](tsconfig.base.json). The `verbatimModuleSyntax` flag means `import type` vs runtime `import` is non-negotiable.
 - **Wrangler** is invoked from `apps/worker/`; D1 binding is `DB`, R2 binding is `UPLOADS_BUCKET`, queue binding is `WEBHOOK_QUEUE`.

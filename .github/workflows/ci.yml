@@ -52,14 +52,15 @@ jobs:
       - name: Typecheck worker
         run: pnpm --filter @evo-csv/worker typecheck
 
-      # Advisory for now: the repo has pre-existing biome violations (format +
-      # a11y, ~66) unrelated to current work. Lint runs and reports on every PR
-      # but does not fail the job until that debt is cleared, at which point this
-      # `continue-on-error` is removed to make lint a hard gate. Tracked in the
-      # biome-debt follow-up issue.
-      - name: Lint (advisory until pre-existing debt is cleared)
+      # Lint with oxlint (Rust, ~2x faster than biome and no OOM). Blocking:
+      # the tree is clean (0 errors), so this is a hard gate, not advisory.
+      - name: Lint (oxlint)
         run: pnpm lint
-        continue-on-error: true
+
+      # Format check with oxfmt (Rust, ~3x faster than biome). Fails if any file
+      # isn't formatted; run `pnpm format` locally to fix.
+      - name: Format check (oxfmt)
+        run: pnpm format:check
 
       - name: Test (worker + web)
         run: pnpm test

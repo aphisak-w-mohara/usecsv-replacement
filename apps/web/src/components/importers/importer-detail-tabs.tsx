@@ -25,7 +25,11 @@ export function ImporterDetailTabs({ importerName, initialTab = "general", rende
       <header className="border-b border-slate-200 pb-2">
         <h1 className="text-xl font-semibold text-slate-900">{importerName}</h1>
       </header>
-      <nav role="tablist" aria-label="Importer settings" className="flex gap-1 border-b border-slate-200">
+      <nav
+        role="tablist"
+        aria-label="Importer settings"
+        className="flex gap-1 border-b border-slate-200"
+      >
         {TABS.map((t) => {
           const selected = t.key === active;
           return (
