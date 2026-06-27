@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export type GeneralTabImporter = {
   id: string;
@@ -98,38 +99,14 @@ export function ImporterGeneralTab({
       </section>
 
       {confirmingArchive && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="archive-confirm-title"
-          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30"
-        >
-          <div className="flex flex-col gap-4 rounded-md bg-white p-6 shadow-lg">
-            <h3 id="archive-confirm-title" className="text-base font-semibold text-slate-900">
-              Archive {importer.name}?
-            </h3>
-            <p className="max-w-sm text-sm text-slate-600">
-              Archiving hides this importer from the list and prevents new uploads against it.
-              Historical uploads remain viewable.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmingArchive(false)}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleArchiveConfirm}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white"
-              >
-                Archive importer
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`Archive ${importer.name}?`}
+          body="Archiving hides this importer from the list and prevents new uploads against it. Historical uploads remain viewable."
+          confirmLabel="Archive importer"
+          danger
+          onCancel={() => setConfirmingArchive(false)}
+          onConfirm={handleArchiveConfirm}
+        />
       )}
     </div>
   );

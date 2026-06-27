@@ -5,6 +5,8 @@ type Props = {
   onGoogleSignIn: () => void;
   /** Optional status banner (e.g. an error). */
   notice?: string | null;
+  /** True while sign-in is in flight — disables the button to block double-submit. */
+  loading?: boolean;
 };
 
 /**
@@ -15,7 +17,7 @@ type Props = {
  * Google is the only sign-in method for now; the passwordless email-link path is
  * disabled (UI removed here; provider disabled in Firebase).
  */
-export function LoginCard({ mode, onGoogleSignIn, notice }: Props) {
+export function LoginCard({ mode, onGoogleSignIn, notice, loading }: Props) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
       <div className="flex w-full max-w-sm flex-col gap-6 rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
@@ -24,14 +26,20 @@ export function LoginCard({ mode, onGoogleSignIn, notice }: Props) {
           <p className="text-sm text-slate-500">Sign in to continue</p>
         </div>
 
-        {notice ? <p className="text-center text-sm text-slate-600">{notice}</p> : null}
+        {notice ? (
+          <p role="alert" className="text-center text-sm text-slate-600">
+            {notice}
+          </p>
+        ) : null}
 
         <button
           type="button"
           onClick={onGoogleSignIn}
-          className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          disabled={loading}
+          aria-busy={loading}
+          className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
-          Continue with Google
+          {loading ? "Signing in…" : "Continue with Google"}
         </button>
 
         {mode ? <p className="text-center text-xs text-slate-400">{mode}</p> : null}

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -44,7 +44,7 @@ describe("MembersSection", () => {
     expect(memberRow?.textContent).toContain("owner");
   });
 
-  it("lists pending invites with a Revoke button and calls onRevoke", async () => {
+  it("lists pending invites; revoking confirms first, then calls onRevoke", async () => {
     const user = userEvent.setup();
     const onRevoke = vi.fn();
     render(
@@ -58,8 +58,31 @@ describe("MembersSection", () => {
       />,
     );
     expect(screen.getByText("junior@mohara.co")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /revoke/i }));
+    await user.click(screen.getByRole("button", { name: /^revoke$/i }));
+    // Destructive action: confirm before firing.
+    expect(onRevoke).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /revoke invite/i }));
     expect(onRevoke).toHaveBeenCalledWith("inv_1");
+  });
+
+  it("cancelling the revoke confirmation does not call onRevoke", async () => {
+    const user = userEvent.setup();
+    const onRevoke = vi.fn();
+    render(
+      <MembersSection
+        members={[owner]}
+        invites={[pending]}
+        creating={false}
+        onCreate={noop}
+        onRevoke={onRevoke}
+        onDismissCreated={noop}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /^revoke$/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+    expect(onRevoke).not.toHaveBeenCalled();
   });
 
   it("calls onCreate with the trimmed email and selected role on submit", async () => {
@@ -98,7 +121,7 @@ describe("MembersSection", () => {
 
   it("shows the created invite URL with a send-manually note and a copy button", async () => {
     const user = userEvent.setup();
-    const writeText = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
