@@ -8,8 +8,8 @@ and the retry endpoint in [`apps/worker/src/routes/uploads.ts`](../../apps/worke
 
 ## How dispatch works (one batch at a time)
 
-1. The SPA creates an upload, persists each batch body to R2 at
-   `uploads/<uploadId>/batches/<batchIndex>.json`, and enqueues the first batch.
+1. The SPA creates an upload, persists each batch body gzipped in D1
+   (`upload_batches.payload`, see ADR-0002 — no R2), and enqueues the first batch.
 2. The queue consumer (`dispatchBatch`) POSTs the batch body to the
    importer-environment `webhook_url` (HMAC-signed when enabled), records a
    `webhook_attempts` row, then calls `recomputeUploadStatus`.

@@ -1,6 +1,7 @@
 import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { dispatchBatch } from "../src/lib/dispatch";
+import { gunzipToString } from "../src/lib/gzip";
 
 // Epic #44 success criterion #5: a multi-batch upload exercised through the
 // dispatch consumer asserts batch.index ordering and the index === count
@@ -45,10 +46,15 @@ describe("multi-batch dispatch (E2E ordering)", () => {
     const id = await seedMultiBatchUpload();
 
     // Each persisted batch payload pins its own index/count — verify the contract.
+    // Payloads live gzipped inline in D1 (upload_batches.payload), not R2 (ADR-0002).
     for (let i = 1; i <= BATCH_COUNT; i++) {
-      const obj = await env.UPLOADS_BUCKET.get(`uploads/${id}/batches/${i}.json`);
-      expect(obj).not.toBeNull();
-      const payload = JSON.parse(await obj!.text());
+      const row = await env.DB.prepare(
+        "SELECT payload FROM upload_batches WHERE upload_id = ? AND batch_index = ?",
+      )
+        .bind(id, i)
+        .first<{ payload: ArrayBuffer }>();
+      expect(row?.payload).toBeTruthy();
+      const payload = JSON.parse(await gunzipToString(row!.payload));
       expect(payload.batch).toEqual({ index: i, count: BATCH_COUNT, totalRows: BATCH_COUNT });
     }
 
