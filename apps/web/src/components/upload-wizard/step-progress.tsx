@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { buildBatches } from "../../lib/build-batches";
 import { useUploadStatus, type UploadStatusResponse } from "../../lib/use-upload-status";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { FileIcon } from "../ui/icons";
 
 /**
  * API surface, injected so the component is unit-testable without the network.
@@ -124,41 +127,37 @@ export function StepProgress({
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h2 className="text-lg font-semibold text-slate-900">Submit &amp; deliver</h2>
-        <p className="text-sm text-slate-600">
+        <h2 className="text-lg font-semibold text-foreground">Submit &amp; deliver</h2>
+        <p className="text-sm text-muted-foreground">
           {editedRows.length.toLocaleString("en-US")} rows ready. Submitting persists the upload and
           delivers each batch to the importer's webhook.
         </p>
       </header>
 
       {phase === "idle" && (
-        <div>
+        <div className="flex flex-col gap-3">
           {submitError && (
-            <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <Alert tone="danger" title="Submit failed">
               {submitError}
-            </div>
+            </Alert>
           )}
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-          >
+          <Button onClick={handleSubmit} className="self-start">
             Submit import
-          </button>
+          </Button>
         </div>
       )}
 
       {(phase === "submitting" || phase === "polling") && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between text-sm text-slate-700">
+          <div className="flex items-center justify-between text-sm text-foreground">
             <span>
               {delivered}/{batchCount} batches delivered
             </span>
-            <span>{pct}%</span>
+            <span className="font-medium">{pct}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-slate-900 transition-all"
+              className="h-full bg-primary transition-all"
               style={{ width: `${pct}%` }}
               role="progressbar"
               aria-label="Batch delivery progress"
@@ -168,7 +167,7 @@ export function StepProgress({
             />
           </div>
           {status?.latest_attempt && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Latest: batch {status.latest_attempt.batch_index}, attempt{" "}
               {status.latest_attempt.attempt_number}
               {status.latest_attempt.status_code !== null
@@ -180,49 +179,50 @@ export function StepProgress({
       )}
 
       {isTerminal && status?.status === "completed" && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <p className="font-medium">🎉 Import complete</p>
-          {status.has_row_errors && (
-            <p className="mt-1">
-              {status.row_errors.length} row{status.row_errors.length === 1 ? "" : "s"} were
-              rejected by the receiver.
-            </p>
-          )}
-          <div className="mt-3 flex gap-3">
-            {status.has_row_errors && (
-              <a
-                href={`/api/uploads/${uploadId}/errors.csv`}
-                className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800"
-              >
-                Download error CSV
-              </a>
+        <div className="flex flex-col gap-3">
+          <Alert tone="success" title="Import complete">
+            {status.has_row_errors ? (
+              <p>
+                {status.row_errors.length} row{status.row_errors.length === 1 ? "" : "s"} were
+                rejected by the receiver.
+              </p>
+            ) : (
+              <p>All rows were delivered successfully.</p>
             )}
-            <button
-              type="button"
-              onClick={onReset}
-              className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
-            >
+          </Alert>
+          <div className="flex flex-wrap gap-3">
+            {status.has_row_errors && uploadId && (
+              <Button
+                asChild
+                variant="secondary"
+                size="sm"
+                className="bg-success-subtle text-success-subtle-foreground hover:opacity-90"
+                icon={<FileIcon className="size-4" />}
+              >
+                <a href={`/api/uploads/${uploadId}/errors.csv`}>Download error CSV</a>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={onReset}>
               Run another import
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {isTerminal && status?.status === "halted" && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <p className="font-medium">Import halted</p>
-          {status.latest_attempt?.response_body && (
-            <pre className="mt-2 max-h-32 overflow-auto rounded bg-red-100 p-2 text-xs">
-              {status.latest_attempt.response_body}
-            </pre>
-          )}
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="mt-3 rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white"
-          >
+        <div className="flex flex-col gap-3">
+          <Alert tone="danger" title="Import halted">
+            {status.latest_attempt?.response_body && (
+              <div className="mt-2 max-h-40 overflow-auto rounded bg-danger-subtle">
+                <pre className="whitespace-pre-wrap break-words p-2 text-xs">
+                  {status.latest_attempt.response_body}
+                </pre>
+              </div>
+            )}
+          </Alert>
+          <Button variant="primary" size="sm" onClick={handleRetry} className="self-start">
             Retry
-          </button>
+          </Button>
         </div>
       )}
     </div>

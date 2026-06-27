@@ -1,5 +1,10 @@
 import { useState } from "react";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Card, CardBody, CardHeader } from "../ui/card";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
 
 export type GeneralTabImporter = {
   id: string;
@@ -42,61 +47,51 @@ export function ImporterGeneralTab({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <label htmlFor="importer-name" className="text-sm font-medium text-slate-700">
-          Importer name
-        </label>
-        <div className="flex gap-2">
-          <input
-            id="importer-name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-            maxLength={200}
-          />
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!canSave}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Save
-          </button>
-        </div>
-        {saveError && (
-          <p role="alert" className="text-sm text-red-700">
-            {saveError}
-          </p>
-        )}
-      </section>
+      <Card>
+        <CardHeader title="Importer name" />
+        <CardBody className="flex flex-col gap-4">
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+            <Field label="Importer name" className="flex-1">
+              {(p) => (
+                <Input
+                  {...p}
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={200}
+                />
+              )}
+            </Field>
+            <Button type="button" onClick={handleSave} disabled={!canSave} loading={saving}>
+              Save
+            </Button>
+          </div>
+          {saveError && <Alert tone="danger">{saveError}</Alert>}
+        </CardBody>
+      </Card>
 
-      <section className="flex flex-col gap-2 border-t border-slate-200 pt-6">
-        <h2 className="text-sm font-medium text-slate-700">Archive</h2>
-        <p className="text-xs text-slate-500">
-          Archiving hides this importer from the list and prevents new uploads against it.
-          Historical uploads remain viewable. You can unarchive later from the Show-archived view.
-        </p>
-        {importer.archived ? (
-          <button
-            type="button"
-            onClick={onUnarchive}
-            disabled={saving}
-            className="self-start rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
-          >
-            Unarchive
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmingArchive(true)}
-            disabled={saving}
-            className="self-start rounded-md border border-red-300 px-4 py-2 text-sm text-red-700 disabled:opacity-50"
-          >
-            Archive
-          </button>
-        )}
-      </section>
+      <Card>
+        <CardHeader
+          title="Archive"
+          description="Archiving hides this importer from the list and prevents new uploads against it. Historical uploads remain viewable. You can unarchive later from the Show-archived view."
+        />
+        <CardBody>
+          {importer.archived ? (
+            <Button variant="outline" type="button" onClick={onUnarchive} disabled={saving}>
+              Unarchive
+            </Button>
+          ) : (
+            <Button
+              variant="danger"
+              type="button"
+              onClick={() => setConfirmingArchive(true)}
+              disabled={saving}
+            >
+              Archive
+            </Button>
+          )}
+        </CardBody>
+      </Card>
 
       {confirmingArchive && (
         <ConfirmDialog

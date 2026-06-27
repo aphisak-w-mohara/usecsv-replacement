@@ -1,4 +1,12 @@
 import { useState } from "react";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { EmptyState } from "../ui/empty-state";
+import { Field } from "../ui/field";
+import { BoxIcon } from "../ui/icons";
+import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
 
 export type GrantEnv = { id: string; slug: string; name: string };
 
@@ -75,7 +83,7 @@ function AddEnvironmentForm({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3"
+      className="flex flex-col gap-3 rounded-md border border-border bg-muted/40 p-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (!canSubmit) return;
@@ -84,39 +92,37 @@ function AddEnvironmentForm({
         setSlug("");
       }}
     >
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-700">Name</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Production"
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-700">Slug (optional)</span>
-          <input
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder={derived || "production"}
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {creating ? "Adding…" : "Add environment"}
-        </button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Field label="Name" required className="flex-1">
+          {(p) => (
+            <Input
+              {...p}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Production"
+            />
+          )}
+        </Field>
+        <Field label="Slug" optional className="flex-1">
+          {(p) => (
+            <Input
+              {...p}
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder={derived || "production"}
+            />
+          )}
+        </Field>
+        <Button type="submit" loading={creating} disabled={!canSubmit}>
+          Add environment
+        </Button>
       </div>
       {name.trim() && (
-        <p className="text-xs text-slate-500">
-          Will be created with slug <code className="text-slate-700">{effectiveSlug}</code>.
+        <p className="text-xs text-muted-foreground">
+          Will be created with slug <code className="text-foreground">{effectiveSlug}</code>.
         </p>
       )}
-      {createError && <p className="text-xs text-red-700">{createError}</p>}
+      {createError && <Alert tone="danger">{createError}</Alert>}
     </form>
   );
 }
@@ -138,38 +144,39 @@ export function EnvironmentsSection({
 }: Props) {
   return (
     <section className="flex flex-col gap-4">
-      <header>
-        <h2 className="text-lg font-semibold text-slate-900">Environments</h2>
-        <p className="text-sm text-slate-500">
-          Control which environments each member can see and upload to. Owners always have access to
-          every environment.
-        </p>
-      </header>
-
       {onCreate && (
         <AddEnvironmentForm onCreate={onCreate} creating={creating} createError={createError} />
       )}
 
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading grants…</p>
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner className="size-4" /> Loading grants…
+        </p>
       ) : environments.length === 0 ? (
-        <p className="text-sm text-slate-500">No environments in this project yet.</p>
+        <EmptyState
+          icon={<BoxIcon className="size-6" />}
+          title="No environments yet"
+          description="Environments let you scope which members can see and upload to each target. Add your first one above."
+        />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No members yet.</p>
+        <EmptyState
+          icon={<BoxIcon className="size-6" />}
+          title="No members to grant"
+          description="Invite members in the Members tab — they'll appear here so you can grant environment access."
+        />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-md border border-border">
           <table className="min-w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200">
-                <th className="px-3 py-2 text-left font-medium text-slate-700">Member</th>
+              <tr className="border-b border-border">
+                <th className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium text-foreground">
+                  Member
+                </th>
+                {/* striped rows below inherit their bg via bg-inherit on the sticky cell */}
                 {environments.map((env) => (
-                  <th key={env.id} className="px-3 py-2 text-center font-medium text-slate-700">
+                  <th key={env.id} className="px-3 py-2 text-center font-medium text-foreground">
                     {env.name}
                   </th>
                 ))}
@@ -179,31 +186,37 @@ export function EnvironmentsSection({
               {rows.map((row) => {
                 const isOwner = row.role === "owner";
                 return (
-                  <tr key={row.user_id} className="border-b border-slate-100">
-                    <td className="px-3 py-2">
-                      <span className="text-slate-900">{row.email}</span>
+                  <tr
+                    key={row.user_id}
+                    className="border-b border-border bg-card last:border-0 even:bg-muted/40"
+                  >
+                    <td className="sticky left-0 z-10 bg-inherit px-3 py-2">
+                      <span className="text-foreground">{row.email}</span>
                       {isOwner && (
-                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                        <Badge tone="primary" className="ml-2">
                           owner
-                        </span>
+                        </Badge>
                       )}
                     </td>
                     {environments.map((env) => {
                       const checked = isOwner || row.granted_env_ids.includes(env.id);
+                      const label = `${row.email} - ${env.name}`;
                       return (
                         <td key={env.id} className="px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={isOwner}
-                            aria-label={`${row.email} - ${env.name}`}
-                            title={isOwner ? "Owner - always has access." : undefined}
-                            onChange={(e) => {
-                              if (isOwner) return;
-                              onToggle(row.user_id, env.id, e.target.checked);
-                            }}
-                            className="h-4 w-4 disabled:opacity-50"
-                          />
+                          <label className="inline-flex items-center justify-center">
+                            <span className="sr-only">{label}</span>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={isOwner}
+                              title={isOwner ? "Owner — always has access." : undefined}
+                              onChange={(e) => {
+                                if (isOwner) return;
+                                onToggle(row.user_id, env.id, e.target.checked);
+                              }}
+                              className="size-4 accent-primary disabled:opacity-50"
+                            />
+                          </label>
                         </td>
                       );
                     })}

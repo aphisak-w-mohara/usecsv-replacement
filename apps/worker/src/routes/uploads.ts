@@ -106,16 +106,30 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       // AND its parent importer isn't archived. Archived importers must not
       // accept new uploads — they exist only for the historical audit trail.
       const impEnv = await c.env.DB.prepare(
-        `SELECT ie.id, i.project_id
+        `SELECT ie.id, ie.environment_id, i.project_id
          FROM importer_environments ie
          JOIN importers i ON i.id = ie.importer_id
          WHERE ie.id = ? AND i.project_id = ? AND i.archived_at IS NULL`,
       )
         .bind(body.importer_environment_id, session.project_id)
-        .first<{ id: string; project_id: string }>();
+        .first<{ id: string; environment_id: string; project_id: string }>();
 
       if (!impEnv) {
         return c.json({ error: "Importer environment not found" }, 404);
+      }
+
+      // Members may only upload to an environment they hold a grant for; owners
+      // reach every env in their project. Mirror the IDOR pattern (404, not 403)
+      // so a missing grant is indistinguishable from a missing resource.
+      if (session.role !== "owner") {
+        const grant = await c.env.DB.prepare(
+          "SELECT 1 FROM environment_grants WHERE environment_id = ? AND user_id = ?",
+        )
+          .bind(impEnv.environment_id, session.user.id)
+          .first<{ 1: number }>();
+        if (!grant) {
+          return c.json({ error: "Importer environment not found" }, 404);
+        }
       }
 
       // Inject session email as userId when the caller didn't provide one.
@@ -194,7 +208,7 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       const upload = await c.env.DB.prepare(
         `SELECT u.id, u.numeric_id, u.file_name, u.matched_columns_map, u.uploaded_file_headers,
                 u.user_payload, u.metadata_payload, u.total_rows, u.batch_size, u.batch_count,
-                ie.key AS importer_key
+                ie.key AS importer_key, ie.environment_id
          FROM uploads u
          JOIN importer_environments ie ON ie.id = u.importer_environment_id
          WHERE u.id = ? AND u.project_id = ?`,
@@ -212,10 +226,26 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
           batch_size: number;
           batch_count: number;
           importer_key: string;
+          environment_id: string;
         }>();
 
       if (!upload) {
         return c.json({ error: "Upload not found" }, 404);
+      }
+
+      // Members may only push batches to an environment they hold a grant for —
+      // mirror the create-upload check so a revoked/cross-member grant can't keep
+      // streaming PII to another env's upload. Owners reach every env. 404 (not
+      // 403) to match the IDOR pattern.
+      if (session.role !== "owner") {
+        const grant = await c.env.DB.prepare(
+          "SELECT 1 FROM environment_grants WHERE environment_id = ? AND user_id = ?",
+        )
+          .bind(upload.environment_id, session.user.id)
+          .first<{ 1: number }>();
+        if (!grant) {
+          return c.json({ error: "Upload not found" }, 404);
+        }
       }
       if (batchIndex > upload.batch_count) {
         return c.json({ error: "batch_index exceeds batch_count" }, 400);

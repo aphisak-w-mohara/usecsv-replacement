@@ -1,9 +1,15 @@
 import { Link, Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-import { useState } from "react";
-import { type AccessibleEnv, EnvSwitcher } from "../components/env-switcher";
+import { useEffect, useRef, useState } from "react";
+import { ThemeToggle } from "../components/theme-toggle";
+import { Button } from "../components/ui/button";
+import { EmptyState } from "../components/ui/empty-state";
+import { ChevronDownIcon, InboxIcon, LogoutIcon } from "../components/ui/icons";
 import { api } from "../lib/api";
 import { logout } from "../lib/auth-nav";
 import { firebaseConfigured, waitForFirebaseUser } from "../lib/firebase";
+
+/** An environment the signed-in user may access. */
+export type AccessibleEnv = { id: string; slug: string; name: string };
 
 export type Me = {
   user: { id: string; email: string; name: string; picture_url?: string | null };
@@ -51,61 +57,112 @@ export const Route = createFileRoute("/_authed")({
 
 function AuthedLayout() {
   const { me } = Route.useRouteContext();
-  const [switching, setSwitching] = useState(false);
-
   const accessible = me.accessible_environments ?? [];
   // A member with zero env grants can't reach any env-scoped surface.
   const hasNoEnvAccess = me.role === "member" && accessible.length === 0;
 
-  async function handleSwitch(environmentId: string) {
-    setSwitching(true);
-    try {
-      const res = await api.api.me.environment.$post({ json: { environment_id: environmentId } });
-      if (!res.ok) throw new Error(`Failed to switch environment: ${res.status}`);
-      // Hard-reload so every route's loader re-fetches against the new env (this
-      // also re-renders the switcher from the server-confirmed me.environment_id).
-      window.location.reload();
-    } catch {
-      setSwitching(false); // re-enable the switcher; it still shows the current env
-    }
-  }
-
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-baseline gap-3">
-          <span className="font-semibold text-slate-900">evo-csv</span>
-          <EnvSwitcher
-            environments={accessible}
-            currentId={me.environment_id}
-            switching={switching}
-            onSwitch={(id) => {
-              void handleSwitch(id);
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          {me.role === "owner" && (
-            <Link
-              to="/admin/settings"
-              className="text-sm text-slate-600 hover:text-slate-900 hover:underline"
-            >
-              Settings
+      <header className="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+          <nav className="flex items-center gap-1">
+            <Link to="/" className="mr-2 flex items-center gap-2 font-semibold text-foreground">
+              <span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm text-primary-foreground">
+                ◆
+              </span>
+              <span className="hidden sm:inline">evo-csv</span>
             </Link>
-          )}
-          <span className="text-sm text-slate-600">{me.user.name || me.user.email}</span>
+            <NavLink to="/">Importers</NavLink>
+            {me.role === "owner" && <NavLink to="/admin/settings">Settings</NavLink>}
+          </nav>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <UserMenu name={me.user.name || me.user.email} pictureUrl={me.user.picture_url} />
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        {hasNoEnvAccess ? <NoEnvAccess /> : <Outlet />}
+      </main>
+    </div>
+  );
+}
+
+function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&.active]:bg-accent [&.active]:text-accent-foreground"
+      activeOptions={{ exact: to === "/" }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function UserMenu({ name, pictureUrl }: { name: string; pictureUrl?: string | null }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const initial = name.charAt(0).toUpperCase();
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-2 rounded-md py-1 pl-1 pr-2 text-sm text-foreground hover:bg-muted"
+      >
+        {pictureUrl ? (
+          <img src={pictureUrl} alt="" className="size-7 rounded-full object-cover" />
+        ) : (
+          <span className="flex size-7 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+            {initial}
+          </span>
+        )}
+        <span className="hidden max-w-32 truncate sm:inline">{name}</span>
+        <ChevronDownIcon className="size-4 text-muted-foreground" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 mt-1 w-48 overflow-hidden rounded-md border border-border bg-card py-1 shadow-lg"
+        >
+          <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+            Signed in as
+            <p className="truncate font-medium text-foreground">{name}</p>
+          </div>
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               void logout();
             }}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
           >
-            Logout
+            <LogoutIcon className="size-4 text-muted-foreground" />
+            Sign out
           </button>
         </div>
-      </header>
-      <main className="flex-1">{hasNoEnvAccess ? <NoEnvAccess /> : <Outlet />}</main>
+      )}
     </div>
   );
 }
@@ -113,11 +170,17 @@ function AuthedLayout() {
 /** Shown to a member who has been granted no environments yet. */
 function NoEnvAccess() {
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-3 p-10 text-center">
-      <h1 className="text-xl font-semibold text-slate-900">No environment access yet</h1>
-      <p className="text-sm text-slate-500">
-        Ask a project owner to grant you access to an environment to start using evo-csv.
-      </p>
+    <div className="py-16">
+      <EmptyState
+        icon={<InboxIcon className="size-6" />}
+        title="No environment access yet"
+        description="Ask a project owner to grant you access to an environment to start using evo-csv."
+        action={
+          <Button variant="outline" onClick={() => void logout()}>
+            Sign out
+          </Button>
+        }
+      />
     </div>
   );
 }

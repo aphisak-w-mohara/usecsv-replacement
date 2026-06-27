@@ -1,9 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ImporterColumn } from "../../lib/fuzzy-match";
 import { validateCell, type CellValidationResult } from "../../lib/validators";
 import { EditableCell } from "./editable-cell";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { EmptyState } from "../ui/empty-state";
+import { CheckIcon } from "../ui/icons";
 
 const VIRTUALIZE_THRESHOLD = 50;
 
@@ -153,6 +158,7 @@ export function StepReviewGrid({
     [importerColumns, matched],
   );
   const [showOnlyErrors, setShowOnlyErrors] = useState(false);
+  const showOnlyErrorsId = useId();
 
   // Memoize derived data so TanStack Table / Virtual don't see fresh references
   // every render — passing new data/columns on each render kicks their internal
@@ -175,7 +181,9 @@ export function StepReviewGrid({
         id: "__rowIndex",
         header: "#",
         size: 60,
-        cell: (info) => <span className="text-slate-400">{info.row.original.__rowIndex}</span>,
+        cell: (info) => (
+          <span className="text-muted-foreground">{info.row.original.__rowIndex}</span>
+        ),
       },
     ];
     for (const col of mappedColumns) {
@@ -224,49 +232,52 @@ export function StepReviewGrid({
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h2 className="text-lg font-semibold text-slate-900">Review &amp; submit</h2>
-        <p className="text-sm text-slate-600">
+        <h2 className="text-lg font-semibold text-foreground">Review &amp; submit</h2>
+        <p className="text-sm text-muted-foreground">
           Each mapped cell has been validated against your importer schema. Click any cell to edit
           it inline — errors update in real time.
         </p>
       </header>
 
-      <div className="flex items-center gap-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-        <span>{rows.length.toLocaleString("en-US")} rows</span>
-        <span>·</span>
-        <span className={errorCount > 0 ? "text-red-700" : "text-slate-600"}>
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted px-4 py-3 text-sm">
+        <Badge tone="neutral">{rows.length.toLocaleString("en-US")} rows</Badge>
+        <Badge tone={errorCount > 0 ? "danger" : "neutral"}>
           {errorCount} error{errorCount === 1 ? "" : "s"}
-        </span>
-        <span>·</span>
-        <span className={warningCount > 0 ? "text-yellow-700" : "text-slate-600"}>
+        </Badge>
+        <Badge tone={warningCount > 0 ? "warning" : "neutral"}>
           {warningCount} warning{warningCount === 1 ? "" : "s"}
-        </span>
-        <label className="ml-auto flex items-center gap-2 text-xs text-slate-600">
+        </Badge>
+        <label
+          htmlFor={showOnlyErrorsId}
+          className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"
+        >
           <input
+            id={showOnlyErrorsId}
             type="checkbox"
             checked={showOnlyErrors}
             onChange={(e) => setShowOnlyErrors(e.target.checked)}
+            className="size-4 rounded border-input accent-primary"
           />
           Show only errors
         </label>
       </div>
 
       {blockedByInvalidGate && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <Alert tone="danger" title="Errors block this import">
           Imports with errors are blocked for this importer — fix all errors to continue.
-        </div>
+        </Alert>
       )}
 
-      <div ref={parentRef} className="h-[480px] overflow-auto rounded-md border border-slate-200">
+      <div ref={parentRef} className="h-[480px] overflow-auto rounded-md border border-border">
         <table className="min-w-full text-xs" style={{ width: "100%" }}>
-          <thead className="sticky top-0 bg-slate-100">
+          <thead className="sticky top-0 bg-muted">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
                     style={{ width: header.column.getSize() }}
-                    className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-700"
+                    className="border-b border-border px-3 py-2 text-left font-semibold text-foreground"
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
@@ -282,7 +293,7 @@ export function StepReviewGrid({
                     <tr
                       key={row.id}
                       style={{ height: `${virtualRow.size}px` }}
-                      className="border-b border-slate-100"
+                      className="border-b border-border"
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} style={{ width: cell.column.getSize() }} className="p-0">
@@ -293,7 +304,7 @@ export function StepReviewGrid({
                   );
                 })
               : table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100">
+                  <tr key={row.id} className="border-b border-border">
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id} style={{ width: cell.column.getSize() }} className="p-0">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -306,34 +317,27 @@ export function StepReviewGrid({
       </div>
 
       {filterInvalidRows && errorCount > 0 && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground">
           {errorRowIndices.size} row{errorRowIndices.size === 1 ? "" : "s"} will be excluded due to
           errors.
         </p>
       )}
 
       {tableRows.length === 0 && showOnlyErrors && (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          🎉 No errors. Untick "Show only errors" to see all rows.
-        </p>
+        <EmptyState
+          icon={<CheckIcon className="size-6" />}
+          title="No errors"
+          description={'Untick "Show only errors" to see all rows.'}
+        />
       )}
 
       <footer className="flex justify-between pt-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm"
-        >
+        <Button variant="outline" onClick={onBack}>
           Back
-        </button>
-        <button
-          type="button"
-          onClick={() => onConfirmed(rows)}
-          disabled={blockedByInvalidGate}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        </Button>
+        <Button onClick={() => onConfirmed(rows)} disabled={blockedByInvalidGate}>
           Next
-        </button>
+        </Button>
       </footer>
     </div>
   );

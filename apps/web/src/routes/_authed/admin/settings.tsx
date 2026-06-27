@@ -13,16 +13,29 @@ import {
   type PendingInvite,
 } from "../../../components/settings/members-section";
 import { ProjectSection } from "../../../components/settings/project-section";
+import { Card, CardBody, CardHeader } from "../../../components/ui/card";
+import { BoxIcon, SettingsIcon, UsersIcon } from "../../../components/ui/icons";
+import { cn } from "../../../lib/cn";
 import { api } from "../../../lib/api";
 
 export const Route = createFileRoute("/_authed/admin/settings")({
   component: SettingsRoute,
 });
 
+type SettingsTab = "project" | "members" | "environments";
+
+const TABS: { id: SettingsTab; label: string; icon: typeof SettingsIcon }[] = [
+  { id: "project", label: "Project", icon: SettingsIcon },
+  { id: "members", label: "Members", icon: UsersIcon },
+  { id: "environments", label: "Environments", icon: BoxIcon },
+];
+
 function SettingsRoute() {
   const { me } = Route.useRouteContext();
   const projectId = me.project_id;
   const isOwner = me.role === "owner";
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>("project");
 
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
@@ -217,48 +230,130 @@ function SettingsRoute() {
 
   if (!isOwner) {
     return (
-      <div className="flex flex-col gap-4 p-6">
-        <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
-        <p className="text-sm text-slate-500">
-          Only project owners can manage members and invites.
-        </p>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-6">
+        <header className="space-y-1">
+          <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Only project owners can manage members and invites.
+          </p>
+        </header>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
-      <ProjectSection
-        allowedEmailDomain={allowedDomain}
-        mismatchedMemberCount={mismatchedCount}
-        loading={projectLoading}
-        saving={projectSaving}
-        error={projectError}
-        onSave={handleSaveDomain}
-      />
-      <MembersSection
-        members={members}
-        invites={invites}
-        loading={loading}
-        creating={creating}
-        createError={createError}
-        error={error}
-        createdInvite={createdInvite}
-        onCreate={handleCreate}
-        onRevoke={handleRevoke}
-        onDismissCreated={() => setCreatedInvite(null)}
-      />
-      <EnvironmentsSection
-        environments={grantEnvs}
-        rows={grantRows}
-        loading={grantsLoading}
-        error={grantsError}
-        onToggle={handleToggleGrant}
-        onCreate={handleCreateEnvironment}
-        creating={envCreating}
-        createError={envCreateError}
-      />
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
+      <header className="space-y-1">
+        <h1 className="text-xl font-semibold text-foreground">Settings</h1>
+        <p className="text-sm text-muted-foreground">
+          Manage your project's sign-in domain, members, and environment access.
+        </p>
+      </header>
+
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1"
+      >
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`settings-tab-${tab.id}`}
+              aria-selected={selected}
+              aria-controls={`settings-panel-${tab.id}`}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                selected
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="size-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "project" && (
+        <div role="tabpanel" id="settings-panel-project" aria-labelledby="settings-tab-project">
+          <Card>
+            <CardHeader
+              title="Project"
+              description="Restrict who can sign in and be invited to this project."
+            />
+            <CardBody>
+              <ProjectSection
+                allowedEmailDomain={allowedDomain}
+                mismatchedMemberCount={mismatchedCount}
+                loading={projectLoading}
+                saving={projectSaving}
+                error={projectError}
+                onSave={handleSaveDomain}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "members" && (
+        <div role="tabpanel" id="settings-panel-members" aria-labelledby="settings-tab-members">
+          <Card>
+            <CardHeader
+              title="Members"
+              description="Invite teammates and manage who has access to this project."
+            />
+            <CardBody>
+              <MembersSection
+                members={members}
+                invites={invites}
+                loading={loading}
+                creating={creating}
+                createError={createError}
+                error={error}
+                createdInvite={createdInvite}
+                onCreate={handleCreate}
+                onRevoke={handleRevoke}
+                onDismissCreated={() => setCreatedInvite(null)}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "environments" && (
+        <div
+          role="tabpanel"
+          id="settings-panel-environments"
+          aria-labelledby="settings-tab-environments"
+        >
+          <Card>
+            <CardHeader
+              title="Environments"
+              description="Control which environments each member can see and upload to. Owners always have access to every environment."
+            />
+            <CardBody>
+              <EnvironmentsSection
+                environments={grantEnvs}
+                rows={grantRows}
+                loading={grantsLoading}
+                error={grantsError}
+                onToggle={handleToggleGrant}
+                onCreate={handleCreateEnvironment}
+                creating={envCreating}
+                createError={envCreateError}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

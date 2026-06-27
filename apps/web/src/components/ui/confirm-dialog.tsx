@@ -1,5 +1,7 @@
-import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { Alert } from "./alert";
+import { Button } from "./button";
+import { Modal } from "./modal";
 
 type Props = {
   title: string;
@@ -18,9 +20,9 @@ type Props = {
 
 /**
  * Shared confirmation modal. Used for every destructive/irreversible action
- * (archive, delete column, disable signing, revoke invite). Supports
- * Escape-to-cancel and an in-flight `busy` state so a slow confirm can't be
- * double-fired or dismissed mid-request.
+ * (archive, delete column, disable signing, revoke invite). Built on Modal, so
+ * it inherits focus trap, focus restore, Escape-to-cancel, and scroll lock. The
+ * in-flight `busy` state blocks dismissal so a slow confirm can't be double-fired.
  */
 export function ConfirmDialog({
   title,
@@ -33,51 +35,28 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
 }: Props) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) onCancel();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onCancel]);
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 p-4"
-    >
-      <div className="flex w-full max-w-md flex-col gap-3 rounded-md bg-white p-6 shadow-lg">
-        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-        {body && <div className="text-sm text-slate-600">{body}</div>}
-        {error && (
-          <p role="alert" className="text-sm text-red-700">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
-          >
+    <Modal
+      open
+      onClose={onCancel}
+      title={title}
+      size="sm"
+      dismissable={!busy}
+      footer={
+        <>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            className={
-              danger
-                ? "rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                : "rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            }
-          >
+          </Button>
+          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={busy}>
             {confirmLabel}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {body && <div className="text-sm text-muted-foreground">{body}</div>}
+        {error && <Alert tone="danger">{error}</Alert>}
       </div>
-    </div>
+    </Modal>
   );
 }

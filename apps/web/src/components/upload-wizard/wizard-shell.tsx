@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { cn } from "../../lib/cn";
+import { CheckIcon } from "../ui/icons";
 
 type Step = {
   index: number;
@@ -28,41 +30,58 @@ type WizardShellProps = {
 export function WizardShell({ activeStep, children, footer }: WizardShellProps) {
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-8">
-      <ol className="flex items-center gap-2" aria-label="Upload wizard steps">
-        {STEPS.map((step) => {
-          const isActive = step.index === activeStep;
-          const isComplete = step.index < activeStep;
-          return (
-            <li
-              key={step.index}
-              className={`flex items-center gap-2 ${
-                isActive
-                  ? "font-semibold text-slate-900"
-                  : isComplete
-                    ? "text-slate-700"
-                    : "text-slate-500"
-              }`}
-            >
-              <span
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs ${
-                  isActive
-                    ? "bg-slate-900 text-white"
-                    : isComplete
-                      ? "bg-emerald-600 text-white"
-                      : "bg-slate-200 text-slate-600"
-                }`}
+      <nav aria-label="Upload wizard steps">
+        <ol className="flex items-center overflow-x-auto pb-1">
+          {STEPS.map((step, i) => {
+            const isActive = step.index === activeStep;
+            const isComplete = step.index < activeStep;
+            const isLast = i === STEPS.length - 1;
+            return (
+              <li
+                key={step.index}
+                className="flex shrink-0 items-center"
                 aria-current={isActive ? "step" : undefined}
               >
-                {isComplete ? "✓" : step.index + 1}
-              </span>
-              <span>{step.label}</span>
-              {step.index < STEPS.length - 1 && <span className="text-slate-300">·</span>}
-            </li>
-          );
-        })}
-      </ol>
+                <span
+                  className={cn(
+                    "flex items-center gap-2",
+                    isActive
+                      ? "font-semibold text-foreground"
+                      : isComplete
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : isComplete
+                          ? "bg-success-subtle text-success-subtle-foreground"
+                          : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {isComplete ? <CheckIcon className="size-4" /> : step.index + 1}
+                  </span>
+                  <span className="whitespace-nowrap text-sm">{step.label}</span>
+                </span>
+                {!isLast && (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "mx-3 h-px w-8 shrink-0 sm:w-12",
+                      isComplete ? "bg-success-subtle" : "bg-border",
+                    )}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
-      <main className="flex-1 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <main className="flex-1 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-sm">
         {children}
       </main>
 

@@ -1,3 +1,6 @@
+import { Button } from "../ui/button";
+import { LogoutIcon } from "../ui/icons";
+
 type Props = {
   /** Sign the user out and return them to /login. */
   onSignOut: () => void;
@@ -11,19 +14,21 @@ type Props = {
  */
 export function NoAccessCard({ onSignOut }: Props) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-      <div className="flex w-full max-w-md flex-col gap-4 rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">No access</h1>
-        <p className="text-sm text-slate-500">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8 sm:px-6">
+      <div className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border bg-card p-8 text-center text-card-foreground shadow-sm">
+        <h1 className="text-xl font-semibold text-foreground">No access</h1>
+        <p className="text-sm text-muted-foreground">
           Your account isn't a member of this workspace yet. Ask a project owner to invite you.
         </p>
-        <button
-          type="button"
+        <p className="text-xs text-muted-foreground">Contact a project owner for access.</p>
+        <Button
+          variant="outline"
+          icon={<LogoutIcon className="size-4" />}
           onClick={onSignOut}
-          className="mx-auto rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="mx-auto"
         >
           Sign out
-        </button>
+        </Button>
       </div>
     </div>
   );
