@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Env, Variables } from "../env.js";
+import { gunzipToString, gzipString } from "../lib/gzip.js";
 import { generateId } from "../lib/ids.js";
 import { injectUserId } from "../lib/inject-user-id.js";
 import { buildWebhookPayload } from "../lib/webhook-payload.js";
@@ -30,10 +31,8 @@ function jsonByteSize(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>().post(
-  "/",
-  zValidator("json", uploadCreateSchema),
-  async (c) => {
+export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
+  .post("/", zValidator("json", uploadCreateSchema), async (c) => {
     const body = c.req.valid("json");
     const session = c.get("session");
     const idempotencyKey = c.req.header("Idempotency-Key") ?? null;
@@ -101,10 +100,10 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       await c.env.DB.prepare(
         `INSERT INTO uploads (
           id, numeric_id, project_id, importer_environment_id, file_name, file_size,
-          r2_source_key, matched_columns_map, uploaded_file_headers,
+          matched_columns_map, uploaded_file_headers,
           user_payload, metadata_payload, total_rows, batch_size, batch_count,
           status, idempotency_key, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
       )
         .bind(
           uploadId,
@@ -113,7 +112,6 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
           body.importer_environment_id,
           body.file_name,
           body.file_size,
-          `uploads/${uploadId}/source.csv`,
           JSON.stringify(body.matched_columns_map),
           JSON.stringify(body.uploaded_file_headers),
           finalUserPayload === null ? null : JSON.stringify(finalUserPayload),
@@ -139,12 +137,8 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       console.error("DB error in POST /api/uploads:", err);
       return c.json({ error: "Database error creating upload" }, 500);
     }
-  },
-)
-.post(
-  "/:upload_id/batches/:batch_index",
-  zValidator("json", batchIngestSchema),
-  async (c) => {
+  })
+  .post("/:upload_id/batches/:batch_index", zValidator("json", batchIngestSchema), async (c) => {
     const uploadId = c.req.param("upload_id");
     const batchIndex = Number(c.req.param("batch_index"));
     const { rows } = c.req.valid("json");
@@ -184,7 +178,7 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
         return c.json({ error: "batch_index exceeds batch_count" }, 400);
       }
 
-      // Idempotent: if this batch is already persisted, return 204 without rewriting R2.
+      // Idempotent: if this batch is already persisted, return 204 without rewriting it.
       const existing = await c.env.DB.prepare(
         "SELECT 1 FROM upload_batches WHERE upload_id = ? AND batch_index = ?",
       )
@@ -208,17 +202,17 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
         rows: rows as BuildWebhookPayloadInput["rows"],
       });
 
-      const r2Key = `uploads/${uploadId}/batches/${batchIndex}.json`;
-      await c.env.UPLOADS_BUCKET.put(r2Key, JSON.stringify(payload), {
-        httpMetadata: { contentType: "application/json" },
-      });
-
+      // Persist the canonical payload inline in D1 (gzipped BLOB). The
+      // (upload_id, batch_index) PK + ON CONFLICT DO NOTHING preserves the
+      // idempotent "skip if already persisted" semantic the R2 key path had.
+      const gz = await gzipString(JSON.stringify(payload));
       const now = Math.floor(Date.now() / 1000);
       await c.env.DB.prepare(
-        `INSERT INTO upload_batches (upload_id, batch_index, r2_key, row_count, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO upload_batches (upload_id, batch_index, payload, payload_encoding, row_count, created_at)
+         VALUES (?, ?, ?, 'gzip', ?, ?)
+         ON CONFLICT(upload_id, batch_index) DO NOTHING`,
       )
-        .bind(uploadId, batchIndex, r2Key, rows.length, now)
+        .bind(uploadId, batchIndex, gz, rows.length, now)
         .run();
 
       await c.env.DB.prepare(
@@ -234,200 +228,200 @@ export const uploadsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       console.error("DB/R2 error in POST batch:", err);
       return c.json({ error: "Failed to persist batch" }, 500);
     }
-  },
-)
-.get("/:upload_id", async (c) => {
-  const uploadId = c.req.param("upload_id");
-  const session = c.get("session");
+  })
+  .get("/:upload_id", async (c) => {
+    const uploadId = c.req.param("upload_id");
+    const session = c.get("session");
 
-  try {
-    const upload = await c.env.DB.prepare(
-      "SELECT id, numeric_id, status, batch_count FROM uploads WHERE id = ? AND project_id = ?",
-    )
-      .bind(uploadId, session.project_id)
-      .first<{ id: string; numeric_id: number; status: string; batch_count: number }>();
-    if (!upload) {
-      return c.json({ error: "Upload not found" }, 404);
-    }
+    try {
+      const upload = await c.env.DB.prepare(
+        "SELECT id, numeric_id, status, batch_count FROM uploads WHERE id = ? AND project_id = ?",
+      )
+        .bind(uploadId, session.project_id)
+        .first<{ id: string; numeric_id: number; status: string; batch_count: number }>();
+      if (!upload) {
+        return c.json({ error: "Upload not found" }, 404);
+      }
 
-    const attempts = await c.env.DB.prepare(
-      `SELECT batch_index, attempt_number, status_code, response_body, errors_json
+      const attempts = await c.env.DB.prepare(
+        `SELECT batch_index, attempt_number, status_code, response_body, errors_json
        FROM webhook_attempts WHERE upload_id = ?
        ORDER BY started_at ASC, attempt_number ASC`,
-    )
-      .bind(uploadId)
-      .all<{
-        batch_index: number;
-        attempt_number: number;
-        status_code: number | null;
-        response_body: string | null;
-        errors_json: string | null;
-      }>();
+      )
+        .bind(uploadId)
+        .all<{
+          batch_index: number;
+          attempt_number: number;
+          status_code: number | null;
+          response_body: string | null;
+          errors_json: string | null;
+        }>();
 
-    const rows = attempts.results ?? [];
+      const rows = attempts.results ?? [];
 
-    const deliveredSet = new Set<number>();
-    const rowErrors: Array<{ row: number; msg: string }> = [];
-    for (const a of rows) {
-      if (a.status_code !== null && a.status_code >= 200 && a.status_code < 300) {
-        deliveredSet.add(a.batch_index);
-      }
-      if (a.errors_json) {
-        try {
-          const parsed = JSON.parse(a.errors_json) as Array<{ row: number; msg: string }>;
-          for (const e of parsed) rowErrors.push(e);
-        } catch {
-          // ignore malformed errors_json
+      const deliveredSet = new Set<number>();
+      const rowErrors: Array<{ row: number; msg: string }> = [];
+      for (const a of rows) {
+        if (a.status_code !== null && a.status_code >= 200 && a.status_code < 300) {
+          deliveredSet.add(a.batch_index);
         }
-      }
-    }
-
-    const last = rows.length > 0 ? rows[rows.length - 1]! : null;
-
-    return c.json({
-      upload_id: upload.id,
-      numeric_id: upload.numeric_id,
-      status: upload.status,
-      batch_count: upload.batch_count,
-      batches_delivered: deliveredSet.size,
-      latest_attempt: last
-        ? {
-            batch_index: last.batch_index,
-            attempt_number: last.attempt_number,
-            status_code: last.status_code,
-            response_body: last.response_body,
+        if (a.errors_json) {
+          try {
+            const parsed = JSON.parse(a.errors_json) as Array<{ row: number; msg: string }>;
+            for (const e of parsed) rowErrors.push(e);
+          } catch {
+            // ignore malformed errors_json
           }
-        : null,
-      row_errors: rowErrors,
-      has_row_errors: rowErrors.length > 0,
-    });
-  } catch (err) {
-    console.error("DB error in GET upload status:", err);
-    return c.json({ error: "Failed to load upload status" }, 500);
-  }
-})
-.post("/:upload_id/retry", async (c) => {
-  const uploadId = c.req.param("upload_id");
-  const session = c.get("session");
-
-  try {
-    const upload = await c.env.DB.prepare(
-      "SELECT id, batch_count FROM uploads WHERE id = ? AND project_id = ?",
-    )
-      .bind(uploadId, session.project_id)
-      .first<{ id: string; batch_count: number }>();
-    if (!upload) return c.json({ error: "Upload not found" }, 404);
-
-    // Find batches with no 2xx attempt and re-enqueue each (attempt restarts at 1).
-    const attempts = await c.env.DB.prepare(
-      "SELECT batch_index, status_code FROM webhook_attempts WHERE upload_id = ?",
-    )
-      .bind(uploadId)
-      .all<{ batch_index: number; status_code: number | null }>();
-    const delivered = new Set<number>();
-    for (const a of attempts.results ?? []) {
-      if (a.status_code !== null && a.status_code >= 200 && a.status_code < 300) {
-        delivered.add(a.batch_index);
-      }
-    }
-
-    for (let i = 1; i <= upload.batch_count; i++) {
-      if (!delivered.has(i)) {
-        // Clear prior attempts so the retried delivery gets a fresh attempt-number
-        // slot (otherwise INSERT OR IGNORE in the consumer silently drops it and the
-        // upload can never leave 'halted'). This also resets the 6-attempt budget.
-        await c.env.DB.prepare(
-          "DELETE FROM webhook_attempts WHERE upload_id = ? AND batch_index = ?",
-        )
-          .bind(uploadId, i)
-          .run();
-        await c.env.WEBHOOK_QUEUE.send({ uploadId, batchIndex: i, attempt: 1 });
-      }
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    await c.env.DB.prepare("UPDATE uploads SET status = 'dispatching', updated_at = ? WHERE id = ?")
-      .bind(now, uploadId)
-      .run();
-
-    return c.json({ ok: true }, 202);
-  } catch (err) {
-    console.error("DB error in retry:", err);
-    return c.json({ error: "Failed to retry" }, 500);
-  }
-})
-.get("/:upload_id/errors.csv", async (c) => {
-  const uploadId = c.req.param("upload_id");
-  const session = c.get("session");
-
-  try {
-    const upload = await c.env.DB.prepare(
-      "SELECT id FROM uploads WHERE id = ? AND project_id = ?",
-    )
-      .bind(uploadId, session.project_id)
-      .first<{ id: string }>();
-    if (!upload) return c.json({ error: "Upload not found" }, 404);
-
-    // Collect row errors across all attempts.
-    const attempts = await c.env.DB.prepare(
-      "SELECT errors_json FROM webhook_attempts WHERE upload_id = ?",
-    )
-      .bind(uploadId)
-      .all<{ errors_json: string | null }>();
-    const errorMap = new Map<number, string>();
-    for (const a of attempts.results ?? []) {
-      if (!a.errors_json) continue;
-      try {
-        for (const e of JSON.parse(a.errors_json) as Array<{ row: number; msg: string }>) {
-          errorMap.set(e.row, e.msg);
         }
-      } catch {
-        // skip malformed
       }
+
+      const last = rows.length > 0 ? rows[rows.length - 1]! : null;
+
+      return c.json({
+        upload_id: upload.id,
+        numeric_id: upload.numeric_id,
+        status: upload.status,
+        batch_count: upload.batch_count,
+        batches_delivered: deliveredSet.size,
+        latest_attempt: last
+          ? {
+              batch_index: last.batch_index,
+              attempt_number: last.attempt_number,
+              status_code: last.status_code,
+              response_body: last.response_body,
+            }
+          : null,
+        row_errors: rowErrors,
+        has_row_errors: rowErrors.length > 0,
+      });
+    } catch (err) {
+      console.error("DB error in GET upload status:", err);
+      return c.json({ error: "Failed to load upload status" }, 500);
     }
+  })
+  .post("/:upload_id/retry", async (c) => {
+    const uploadId = c.req.param("upload_id");
+    const session = c.get("session");
 
-    // Read original rows from the persisted batch payloads in R2.
-    const batches = await c.env.DB.prepare(
-      "SELECT r2_key FROM upload_batches WHERE upload_id = ? ORDER BY batch_index ASC",
-    )
-      .bind(uploadId)
-      .all<{ r2_key: string }>();
+    try {
+      const upload = await c.env.DB.prepare(
+        "SELECT id, batch_count FROM uploads WHERE id = ? AND project_id = ?",
+      )
+        .bind(uploadId, session.project_id)
+        .first<{ id: string; batch_count: number }>();
+      if (!upload) return c.json({ error: "Upload not found" }, 404);
 
-    const rowByNumber = new Map<number, Record<string, string | number>>();
-    const columnKeys: string[] = [];
-    for (const b of batches.results ?? []) {
-      const obj = await c.env.UPLOADS_BUCKET.get(b.r2_key);
-      if (!obj) continue;
-      const payload = JSON.parse(await obj.text()) as {
-        rows: Array<Record<string, string | number>>;
+      // Find batches with no 2xx attempt and re-enqueue each (attempt restarts at 1).
+      const attempts = await c.env.DB.prepare(
+        "SELECT batch_index, status_code FROM webhook_attempts WHERE upload_id = ?",
+      )
+        .bind(uploadId)
+        .all<{ batch_index: number; status_code: number | null }>();
+      const delivered = new Set<number>();
+      for (const a of attempts.results ?? []) {
+        if (a.status_code !== null && a.status_code >= 200 && a.status_code < 300) {
+          delivered.add(a.batch_index);
+        }
+      }
+
+      for (let i = 1; i <= upload.batch_count; i++) {
+        if (!delivered.has(i)) {
+          // Clear prior attempts so the retried delivery gets a fresh attempt-number
+          // slot (otherwise INSERT OR IGNORE in the consumer silently drops it and the
+          // upload can never leave 'halted'). This also resets the 6-attempt budget.
+          await c.env.DB.prepare(
+            "DELETE FROM webhook_attempts WHERE upload_id = ? AND batch_index = ?",
+          )
+            .bind(uploadId, i)
+            .run();
+          await c.env.WEBHOOK_QUEUE.send({ uploadId, batchIndex: i, attempt: 1 });
+        }
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      await c.env.DB.prepare(
+        "UPDATE uploads SET status = 'dispatching', updated_at = ? WHERE id = ?",
+      )
+        .bind(now, uploadId)
+        .run();
+
+      return c.json({ ok: true }, 202);
+    } catch (err) {
+      console.error("DB error in retry:", err);
+      return c.json({ error: "Failed to retry" }, 500);
+    }
+  })
+  .get("/:upload_id/errors.csv", async (c) => {
+    const uploadId = c.req.param("upload_id");
+    const session = c.get("session");
+
+    try {
+      const upload = await c.env.DB.prepare(
+        "SELECT id FROM uploads WHERE id = ? AND project_id = ?",
+      )
+        .bind(uploadId, session.project_id)
+        .first<{ id: string }>();
+      if (!upload) return c.json({ error: "Upload not found" }, 404);
+
+      // Collect row errors across all attempts.
+      const attempts = await c.env.DB.prepare(
+        "SELECT errors_json FROM webhook_attempts WHERE upload_id = ?",
+      )
+        .bind(uploadId)
+        .all<{ errors_json: string | null }>();
+      const errorMap = new Map<number, string>();
+      for (const a of attempts.results ?? []) {
+        if (!a.errors_json) continue;
+        try {
+          for (const e of JSON.parse(a.errors_json) as Array<{ row: number; msg: string }>) {
+            errorMap.set(e.row, e.msg);
+          }
+        } catch {
+          // skip malformed
+        }
+      }
+
+      // Read original rows from the persisted batch payloads (gzipped in D1).
+      const batches = await c.env.DB.prepare(
+        "SELECT payload FROM upload_batches WHERE upload_id = ? ORDER BY batch_index ASC",
+      )
+        .bind(uploadId)
+        .all<{ payload: ArrayBuffer | null }>();
+
+      const rowByNumber = new Map<number, Record<string, string | number>>();
+      const columnKeys: string[] = [];
+      for (const b of batches.results ?? []) {
+        if (!b.payload) continue;
+        const payload = JSON.parse(await gunzipToString(b.payload)) as {
+          rows: Array<Record<string, string | number>>;
+        };
+        for (const row of payload.rows) {
+          rowByNumber.set(Number(row.row), row);
+          for (const k of Object.keys(row)) {
+            if (k !== "row" && !columnKeys.includes(k)) columnKeys.push(k);
+          }
+        }
+      }
+
+      const csvEscape = (v: unknown): string => {
+        const s = String(v ?? "");
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
-      for (const row of payload.rows) {
-        rowByNumber.set(Number(row.row), row);
-        for (const k of Object.keys(row)) {
-          if (k !== "row" && !columnKeys.includes(k)) columnKeys.push(k);
-        }
+
+      const header = ["row", ...columnKeys, "error_message"];
+      const lines = [header.map(csvEscape).join(",")];
+      for (const [rowNum, msg] of [...errorMap.entries()].sort((a, b) => a[0] - b[0])) {
+        const row = rowByNumber.get(rowNum) ?? {};
+        const cells = [rowNum, ...columnKeys.map((k) => row[k] ?? ""), msg];
+        lines.push(cells.map(csvEscape).join(","));
       }
+
+      return c.body(lines.join("\n"), 200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="upload-${uploadId}-errors.csv"`,
+      });
+    } catch (err) {
+      console.error("DB/R2 error in errors.csv:", err);
+      return c.json({ error: "Failed to build error CSV" }, 500);
     }
-
-    const csvEscape = (v: unknown): string => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-
-    const header = ["row", ...columnKeys, "error_message"];
-    const lines = [header.map(csvEscape).join(",")];
-    for (const [rowNum, msg] of [...errorMap.entries()].sort((a, b) => a[0] - b[0])) {
-      const row = rowByNumber.get(rowNum) ?? {};
-      const cells = [rowNum, ...columnKeys.map((k) => row[k] ?? ""), msg];
-      lines.push(cells.map(csvEscape).join(","));
-    }
-
-    return c.body(lines.join("\n"), 200, {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="upload-${uploadId}-errors.csv"`,
-    });
-  } catch (err) {
-    console.error("DB/R2 error in errors.csv:", err);
-    return c.json({ error: "Failed to build error CSV" }, 500);
-  }
-});
+  });

@@ -29,10 +29,6 @@ database_name = "evo-csv-dev"
 database_id = "21b06102-dd71-4e58-a8ce-19118a48d472"
 migrations_dir = "migrations"
 
-[[r2_buckets]]
-binding = "UPLOADS_BUCKET"
-bucket_name = "evo-csv-uploads"
-
 [[queues.producers]]
 binding = "WEBHOOK_QUEUE"
 queue = "webhook-dispatch"

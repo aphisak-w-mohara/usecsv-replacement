@@ -1,5 +1,6 @@
 import type { WebhookDispatchJob } from "@evo-csv/shared";
 import type { Env } from "../env.js";
+import { gunzipToString } from "./gzip.js";
 import { generateId } from "./ids.js";
 
 const MAX_ATTEMPTS = 6;
@@ -54,7 +55,10 @@ export async function recomputeUploadStatus(env: Env, uploadId: string): Promise
   const attemptsByBatch = new Map<number, number>();
   for (const a of rows) {
     if (a.status_code !== null && isSuccess(a.status_code)) delivered.add(a.batch_index);
-    attemptsByBatch.set(a.batch_index, Math.max(attemptsByBatch.get(a.batch_index) ?? 0, a.attempt_number));
+    attemptsByBatch.set(
+      a.batch_index,
+      Math.max(attemptsByBatch.get(a.batch_index) ?? 0, a.attempt_number),
+    );
   }
 
   // Phase 1: halted if any undelivered batch has exhausted its attempts.
@@ -84,7 +88,7 @@ export async function recomputeUploadStatus(env: Env, uploadId: string): Promise
 }
 
 /**
- * Deliver one batch. Reads the persisted payload from R2, POSTs it to the
+ * Deliver one batch. Reads the persisted (gzipped) payload from D1, POSTs it to the
  * importer-environment webhook URL (HMAC-signed when enabled), writes a
  * webhook_attempts row, recomputes upload status, and re-enqueues on failure
  * until MAX_ATTEMPTS.
@@ -104,7 +108,11 @@ export async function dispatchBatch(
      WHERE u.id = ?`,
   )
     .bind(uploadId)
-    .first<{ webhook_url: string | null; webhook_signing_enabled: number; webhook_secret: string | null }>();
+    .first<{
+      webhook_url: string | null;
+      webhook_signing_enabled: number;
+      webhook_secret: string | null;
+    }>();
   if (!cfg) {
     console.error(`dispatchBatch: no upload/importer_environment for upload ${uploadId}`);
     return;
@@ -114,14 +122,19 @@ export async function dispatchBatch(
     return;
   }
 
-  const r2Key = `uploads/${uploadId}/batches/${batchIndex}.json`;
-  const obj = await env.UPLOADS_BUCKET.get(r2Key);
-  if (!obj) {
+  const batch = await env.DB.prepare(
+    "SELECT payload FROM upload_batches WHERE upload_id = ? AND batch_index = ?",
+  )
+    .bind(uploadId, batchIndex)
+    .first<{ payload: ArrayBuffer | null }>();
+  if (!batch?.payload) {
     // Batch not persisted yet — re-enqueue shortly (covers any ingest/dispatch race).
+    // D1 is strongly consistent (single primary), so this is a belt-and-suspenders
+    // guard against a job that somehow runs before its INSERT commits.
     await env.WEBHOOK_QUEUE.send(job, { delaySeconds: 5 });
     return;
   }
-  const rawBody = await obj.text();
+  const rawBody = await gunzipToString(batch.payload);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -164,7 +177,17 @@ export async function dispatchBatch(
       (id, upload_id, batch_index, attempt_number, status_code, response_body, errors_json, started_at, finished_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(generateId("wha"), uploadId, batchIndex, attempt, statusCode, responseBody, errorsJson, startedAt, finishedAt)
+    .bind(
+      generateId("wha"),
+      uploadId,
+      batchIndex,
+      attempt,
+      statusCode,
+      responseBody,
+      errorsJson,
+      startedAt,
+      finishedAt,
+    )
     .run();
 
   const ok = statusCode !== null && isSuccess(statusCode);

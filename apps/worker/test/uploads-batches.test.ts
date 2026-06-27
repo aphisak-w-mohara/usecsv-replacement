@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { gunzipToString } from "../src/lib/gzip.js";
 import { authedFetch } from "./helpers/auth.js";
 
 const UPLOAD_BODY = {
@@ -29,7 +30,7 @@ async function createUpload(): Promise<{ upload_id: string; numeric_id: number }
 }
 
 describe("POST /api/uploads/:id/batches/:index", () => {
-  it("writes the canonical payload to R2, records upload_batches, returns 204", async () => {
+  it("writes the canonical payload (gzipped) into upload_batches, returns 204", async () => {
     const { upload_id, numeric_id } = await createUpload();
 
     const res = await authedFetch(`https://example.com/api/uploads/${upload_id}/batches/1`, {
@@ -45,9 +46,15 @@ describe("POST /api/uploads/:id/batches/:index", () => {
     });
     expect(res.status).toBe(204);
 
-    const obj = await env.UPLOADS_BUCKET.get(`uploads/${upload_id}/batches/1.json`);
-    expect(obj).not.toBeNull();
-    const payload = JSON.parse(await obj!.text());
+    const batchRow = await env.DB.prepare(
+      "SELECT payload, payload_encoding, row_count FROM upload_batches WHERE upload_id = ? AND batch_index = 1",
+    )
+      .bind(upload_id)
+      .first<{ payload: ArrayBuffer; payload_encoding: string; row_count: number }>();
+    expect(batchRow?.row_count).toBe(3);
+    expect(batchRow?.payload_encoding).toBe("gzip");
+
+    const payload = JSON.parse(await gunzipToString(batchRow!.payload));
     expect(payload.uploadId).toBe(numeric_id);
     expect(payload.importerId).toBe("82b18e5e-6412-4102-901a-ce3c05d71460");
     expect(payload.batch).toEqual({ index: 1, count: 1, totalRows: 3 });
@@ -57,13 +64,6 @@ describe("POST /api/uploads/:id/batches/:index", () => {
       last_name: "Smith",
       email: "alice@example.com",
     });
-
-    const batchRow = await env.DB.prepare(
-      "SELECT row_count FROM upload_batches WHERE upload_id = ? AND batch_index = 1",
-    )
-      .bind(upload_id)
-      .first<{ row_count: number }>();
-    expect(batchRow?.row_count).toBe(3);
 
     const statusRow = await env.DB.prepare("SELECT status FROM uploads WHERE id = ?")
       .bind(upload_id)

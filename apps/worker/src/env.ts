@@ -2,7 +2,6 @@ import type { WebhookDispatchJob } from "@evo-csv/shared";
 
 export type Env = {
   DB: D1Database;
-  UPLOADS_BUCKET: R2Bucket;
   WEBHOOK_QUEUE: Queue<WebhookDispatchJob>;
   // "local" relaxes auth (trusts a dev email header/var, skipping Firebase
   // token verification); deployed envs use "staging"/"production".

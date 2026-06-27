@@ -1,31 +1,32 @@
 # Runbook — Cloudflare provisioning + first deploy
 
 Takes the worker from code-complete to live. The build is verified
-(`wrangler deploy --dry-run` passes; 329 KiB, all bindings resolve), so what
-remains is **standing up the three remote resources** the worker binds and one
-`deploy`. Everything here needs the **account owner** — resource creation and the
-account-level enablements below can't be done by an unattended agent.
+(`wrangler deploy --dry-run` passes; all bindings resolve), so what remains is
+**creating the two remote resources** the worker binds (D1 + Queue) and one
+`deploy`.
 
-## Account / plan prerequisites (one-time, dashboard)
+## $0, no card, no paid plan
 
-The architecture uses **Queues** and **R2**, so the target account must have:
+The architecture runs entirely on the **Workers Free plan** with **no payment
+method on file**:
 
-1. **Workers Paid** ($5/mo) — required for Queues (consumers don't run on Free).
-2. **R2 enabled** — without it `wrangler r2 ...` returns
-   `Please enable R2 through the Cloudflare Dashboard [code: 10042]`. R2 has a
-   free tier but must be activated (accept R2 terms; card on file).
-3. **An API token / `wrangler login` session with the `r2` scope.** The current
-   `aphisak@mohara.co` OAuth token has `workers`, `d1`, `queues`, `pages` but
-   **not `r2`** — re-run `wrangler login` and grant R2, or mint an API token with
-   *Workers R2 Storage: Edit*.
+- **Queues** — free (10,000 operations/day on Workers Free; we use a few per
+  upload). No card required.
+- **D1** — free (5 GB account storage, 100k writes / 5M reads per day). Batch
+  payloads are stored here (gzipped) — see [ADR-0002](../adr/0002-no-r2-batch-payloads-in-d1.md).
+- **R2 was removed** precisely because enabling it requires a card on file. There
+  is no R2 binding anymore.
+
+The current `aphisak@mohara.co` OAuth token already has the `workers`, `d1`, and
+`queues` scopes needed below (no `r2` scope required).
 
 Account in use: `aphisak@mohara.co` (`01ac9228929b4e4dadeeb28a70e92475`). If the
-team wants a dedicated prod account, switch before provisioning — the IDs below
-are per-account.
+team wants a dedicated prod account, switch before provisioning — the D1 id is
+per-account.
 
-> Naming note: the D1 binding in `wrangler.toml` is `evo-csv-dev`. That's the
-> current (dev-flavoured) name. If you want a separate prod DB, create it under a
-> prod name and update `database_name`/`database_id` accordingly.
+> Naming note: the D1 binding in `wrangler.toml` is `evo-csv-dev` (the current,
+> dev-flavoured name). For a separate prod DB, create it under a prod name and
+> update `database_name`/`database_id` to match.
 
 ## Provision (run from `apps/worker/`)
 
@@ -34,11 +35,11 @@ are per-account.
 npx wrangler d1 create evo-csv-dev
 # 2. Apply schema + seed (project, env, imp_tenants importer + columns, owner) to REMOTE
 npx wrangler d1 migrations apply evo-csv-dev --remote
-# 3. Queue (needs Workers Paid)
+# 3. Queue (free on Workers Free)
 npx wrangler queues create webhook-dispatch
-# 4. R2 bucket (needs R2 enabled + r2-scoped token)
-npx wrangler r2 bucket create evo-csv-uploads
 ```
+
+No R2 step. No card. No plan upgrade.
 
 ## Config to set before deploy
 
@@ -72,8 +73,10 @@ the upload→webhook path (runnable locally without any of the above).
 
 ## Verified deploy-readiness (as of this branch)
 
-- `wrangler deploy --dry-run` ✅ — worker compiles, bindings + vars resolve.
-- Worker 156 / web 191 unit tests ✅; Playwright E2E ✅ (cold boot).
+- `wrangler deploy --dry-run` ✅ — worker compiles; bindings are D1 + Queue only
+  (no R2).
+- Worker 156 / web 191 unit tests ✅; Playwright E2E ✅ (cold boot, R2 removed).
 - Locked webhook payload unchanged (snapshot + E2E assert it byte-for-byte).
-- Blockers are **account-level only** (plan + R2 + r2 token scope) — no code work
-  remains.
+- The only remaining step is the two `wrangler create` commands + `deploy` — a
+  harness running unattended may be blocked from creating prod infra, in which
+  case the account owner runs the three commands above.

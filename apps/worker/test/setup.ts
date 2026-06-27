@@ -5,7 +5,6 @@ import { beforeAll, inject } from "vitest";
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
-    UPLOADS_BUCKET: R2Bucket;
     WEBHOOK_QUEUE: Queue;
     ENVIRONMENT: string;
     FIREBASE_PROJECT_ID: string;
