@@ -35,7 +35,17 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 export type AppType = typeof app;
 
 export default {
-  fetch: app.fetch,
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    const url = new URL(request.url);
+    // The Hono app owns the API; everything else is delegated to the asset
+    // binding, which serves the matching static file or — for unknown client
+    // routes — SPA-falls-back to index.html (not_found_handling, 200, no
+    // redirect). The Worker runs first for all paths (run_worker_first = true).
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+      return app.fetch(request, env, ctx);
+    }
+    return env.ASSETS.fetch(request);
+  },
   async queue(batch: MessageBatch<WebhookDispatchJob>, env: Env): Promise<void> {
     for (const message of batch.messages) {
       try {

@@ -3,6 +3,10 @@ import type { WebhookDispatchJob } from "@evo-csv/shared";
 export type Env = {
   DB: D1Database;
   WEBHOOK_QUEUE: Queue<WebhookDispatchJob>;
+  // Static SPA assets (apps/web/dist), served single-origin with the API so the
+  // browser's `window.location.origin` API calls and Firebase redirect cookies
+  // share one domain. Non-/api paths fall back to index.html (client routing).
+  ASSETS: Fetcher;
   // "local" relaxes auth (trusts a dev email header/var, skipping Firebase
   // token verification); deployed envs use "staging"/"production".
   ENVIRONMENT: string;
