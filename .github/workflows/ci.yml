@@ -1,4 +1,4 @@
-name: CI
+name: CI & Deploy
 
 on:
   pull_request:
@@ -7,6 +7,8 @@ on:
 
 # Cancel superseded runs on the same PR branch (e.g. force-pushes). Never cancel
 # a push-to-main run — that would let a broken commit land with no failing check.
+# NOTE: this workflow-level concurrency only governs the `ci` job. The `deploy`
+# job declares its OWN concurrency group below so a live deploy is never cancelled.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -64,3 +66,79 @@ jobs:
 
       - name: Build (all workspaces)
         run: pnpm build
+
+  deploy:
+    name: Deploy to production
+    needs: ci
+    runs-on: ubuntu-latest
+
+    # Only deploy on a real push to main. This guards two ways:
+    #   - `github.event_name == 'push'` keeps pull_request runs (incl. fork PRs)
+    #     from ever entering this job, so fork PRs never gain access to secrets.
+    #   - `github.ref == 'refs/heads/main'` keeps pushes to any other branch out.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # The `prod` GitHub Environment is configured (in repo Settings →
+    # Environments) with a required reviewer, so this job PAUSES for a one-click
+    # human approval before any of its steps run. The environment also scopes the
+    # Cloudflare / Firebase secrets to deploys only. NOTE: the name must match the
+    # environment exactly — GitHub auto-creates an UNGUARDED env on a mismatch,
+    # silently bypassing the reviewer gate. The required-reviewer rule must be set
+    # up by a human, or the gate does not actually gate.
+    environment: prod
+
+    # Never interrupt a live deploy. Unlike the PR-cancel group above, this job
+    # gets its own group and explicitly does NOT cancel in progress — a second
+    # merge queues behind the running deploy rather than aborting it mid-flight.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.12.0
+          cache: pnpm
+
+      # Same rationale as the ci job: a plain install honours
+      # `supportedArchitectures` and fetches the Linux rolldown native binary
+      # that the Vite build needs (a frozen install would skip it).
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      # Build the SPA with the public Firebase config injected from secrets. The
+      # worker bundles these assets from ../web/dist at deploy time, so the web
+      # build MUST happen before `wrangler deploy`.
+      - name: Build web
+        run: pnpm --filter @evo-csv/web build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+
+      # Apply D1 migrations to prod BEFORE deploying the new worker. Ordering is
+      # deliberate: migrations are additive (new tables/columns), so the old
+      # worker keeps running fine against the migrated schema, and the new worker
+      # never goes live against an un-migrated DB. This repo is single-environment
+      # — `evo-csv-dev` IS the production database.
+      - name: Apply D1 migrations
+        run: pnpm --filter @evo-csv/worker exec wrangler d1 migrations apply evo-csv-dev --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Deploy the worker. This bundles the worker code together with the freshly
+      # built ../web/dist assets and serves them from a single origin.
+      - name: Deploy worker
+        run: pnpm --filter @evo-csv/worker exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
