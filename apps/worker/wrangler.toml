@@ -26,7 +26,7 @@ APP_BASE_URL = "http://localhost:5173"
 [[d1_databases]]
 binding = "DB"
 database_name = "evo-csv-dev"
-database_id = "21b06102-dd71-4e58-a8ce-19118a48d472"
+database_id = "863559dd-5aa2-4ea5-8bf6-1ef1cacf8313"
 migrations_dir = "migrations"
 
 [[queues.producers]]
