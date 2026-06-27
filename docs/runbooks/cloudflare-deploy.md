@@ -53,13 +53,28 @@ In `apps/worker/wrangler.toml`:
 
 No secrets to set — Firebase verification uses public JWKS.
 
-## Deploy
+## Deploy (single-origin: SPA ships with the worker)
+
+The SPA is served by the worker via Workers Assets (`[assets]` → `../web/dist`),
+so build the web app first, then deploy the worker — one origin, one command.
 
 ```bash
-pnpm --filter @evo-csv/worker deploy            # worker
-# web (Pages or your host) built with the public VITE_FIREBASE_* from
-# docs/runbooks/auth-firebase-provisioning.md §2
+# Build the SPA with the public Firebase config (see auth-firebase-provisioning.md §2)
+VITE_FIREBASE_API_KEY=… VITE_FIREBASE_AUTH_DOMAIN=… \
+VITE_FIREBASE_PROJECT_ID=… VITE_FIREBASE_APP_ID=… \
+  pnpm --filter @evo-csv/web build
+# Deploy the worker (bundles dist as static assets; note: `run deploy`, not the
+# pnpm `deploy` builtin)
+pnpm --filter @evo-csv/worker run deploy
 ```
+
+Then add the served origin to **Firebase → Auth → Settings → Authorised
+domains** (e.g. `evo-csv.aphisak.workers.dev`), or Google sign-in returns
+`auth/unauthorized-domain`.
+
+> **Currently deployed:** https://evo-csv.aphisak.workers.dev (Workers Free, $0,
+> no card). D1 `evo-csv-dev` (`863559dd…`, APAC) + queue `webhook-dispatch` live;
+> `evo-csv.aphisak.workers.dev` is in the Firebase authorised domains.
 
 ## Seed the first owner + smoke test
 
