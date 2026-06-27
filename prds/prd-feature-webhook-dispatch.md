@@ -6,6 +6,8 @@
 **Author:** Aphisak Naksomboon
 **Date:** 2026-05-28
 **Status:** Draft — Pending Review
+
+> **Superseded 2026-06-27 (storage):** this PRD describes batch payloads persisted to R2. They were later moved to D1 (gzipped) to keep the importer on the Cloudflare free tier with no card — see [ADR-0002](../docs/adr/0002-no-r2-batch-payloads-in-d1.md). The R2 references below are preserved as the historical record; the dispatch contract (payload shape, queue, backoff, halt) is unchanged.
 **Target release:** Q3 2026 (MVP)
 **Version:** 1.0
 
@@ -63,9 +65,10 @@ The dispatch pipeline itself runs as the worker (no user). The operator-facing e
 
 | Role | Can do | Cannot do |
 |---|---|---|
-| Owner | Retry any upload in any env; download errors.csv | — |
-| Member (env granted) | Retry uploads in granted envs; download errors.csv | Retry uploads in envs they're not granted; cross-project access returns 404 |
-| Member (no env grant) | — | Anything (404, not 403, per IDOR convention) |
+| Owner | Retry any upload in the project; download errors.csv | — |
+| Member (any project member) | Retry / view status / download errors.csv for any upload in the project | Cross-project access returns 404 (not 403, per IDOR convention) |
+
+> **As-built correction (2026-06-27):** the `retry` / status / `errors.csv` endpoints scope by `project_id` **only** — they do not enforce per-environment grants. Any project member can act on any upload in the project regardless of env grant. The earlier table over-claimed env-grant-level control that the shipped code does not enforce; env-grant scoping on these endpoints is deferred (see PRD-004).
 
 ## 5. User Stories & Acceptance Criteria
 
