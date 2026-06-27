@@ -1,8 +1,6 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { authedFetch, seedSession } from "./helpers/auth.js";
-
-beforeAll(() => seedSession(env));
+import { authedFetch } from "./helpers/auth.js";
 
 const PROJECT = "proj_evo";
 
@@ -121,10 +119,9 @@ describe("DELETE /api/projects/:id/invites/:invite_id", () => {
       .bind(id)
       .run();
 
-    const del = await authedFetch(
-      `https://example.com/api/projects/${PROJECT}/invites/${id}`,
-      { method: "DELETE" },
-    );
+    const del = await authedFetch(`https://example.com/api/projects/${PROJECT}/invites/${id}`, {
+      method: "DELETE",
+    });
     expect(del.status).toBe(400);
     const body = await del.json<{ error: string }>();
     expect(body.error).toMatch(/accepted invite/i);
@@ -243,9 +240,7 @@ describe("GET /api/invites/:token (unauthenticated)", () => {
     const { token } = await created.json<{ token: string }>();
     // Backdate created_at + expires_at to 8 days ago.
     const eightDaysAgo = Math.floor(Date.now() / 1000) - 8 * 24 * 60 * 60;
-    await env.DB.prepare(
-      "UPDATE invites SET created_at = ?, expires_at = ? WHERE token = ?",
-    )
+    await env.DB.prepare("UPDATE invites SET created_at = ?, expires_at = ? WHERE token = ?")
       .bind(eightDaysAgo - 1, eightDaysAgo, token)
       .run();
 
@@ -271,8 +266,8 @@ describe("GET /api/invites/:token (unauthenticated)", () => {
 });
 
 describe("owner-gating (403 for non-owner members)", () => {
-  // Seed a separate member user + membership + session.
-  const MEMBER_TOKEN = "member-session";
+  // A real member user + membership in D1; authed by email via the local seam.
+  const MEMBER_EMAIL = "member@mohara.co";
   beforeAll(async () => {
     await env.DB.prepare(
       `INSERT OR IGNORE INTO users (id, email, name, created_at)
@@ -284,16 +279,10 @@ describe("owner-gating (403 for non-owner members)", () => {
     )
       .bind(PROJECT)
       .run();
-    await seedSession(env, {
-      token: MEMBER_TOKEN,
-      userId: "usr_member",
-      projectId: PROJECT,
-      role: "member",
-    });
   });
 
   it("rejects a non-owner POSTing an invite → 403", async () => {
-    const res = await createInvite({ email: "nope@mohara.co", role: "member" }, MEMBER_TOKEN);
+    const res = await createInvite({ email: "nope@mohara.co", role: "member" }, MEMBER_EMAIL);
     expect(res.status).toBe(403);
   });
 
@@ -301,7 +290,7 @@ describe("owner-gating (403 for non-owner members)", () => {
     const res = await authedFetch(
       `https://example.com/api/projects/${PROJECT}/invites`,
       {},
-      MEMBER_TOKEN,
+      MEMBER_EMAIL,
     );
     expect(res.status).toBe(403);
   });
@@ -310,7 +299,7 @@ describe("owner-gating (403 for non-owner members)", () => {
     const res = await authedFetch(
       `https://example.com/api/projects/${PROJECT}/members`,
       {},
-      MEMBER_TOKEN,
+      MEMBER_EMAIL,
     );
     expect(res.status).toBe(403);
   });
@@ -319,7 +308,7 @@ describe("owner-gating (403 for non-owner members)", () => {
     const res = await authedFetch(
       `https://example.com/api/projects/${PROJECT}/invites/inv_whatever`,
       { method: "DELETE" },
-      MEMBER_TOKEN,
+      MEMBER_EMAIL,
     );
     expect(res.status).toBe(403);
   });

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as IndexRouteImport } from './routes/index'
@@ -18,6 +19,11 @@ import { Route as AuthedAdminImportersIndexRouteImport } from './routes/_authed/
 import { Route as AuthedAdminImportersIdRouteImport } from './routes/_authed/admin/importers.$id'
 import { Route as AuthedAdminImportersIdUploadRouteImport } from './routes/_authed/admin/importers.$id_.upload'
 
+const NoAccessRoute = NoAccessRouteImport.update({
+  id: '/no-access',
+  path: '/no-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -63,6 +69,7 @@ const AuthedAdminImportersIdUploadRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/no-access': typeof NoAccessRoute
   '/invites/$token': typeof InvitesTokenRoute
   '/admin/settings': typeof AuthedAdminSettingsRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/no-access': typeof NoAccessRoute
   '/invites/$token': typeof InvitesTokenRoute
   '/admin/settings': typeof AuthedAdminSettingsRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/no-access': typeof NoAccessRoute
   '/invites/$token': typeof InvitesTokenRoute
   '/_authed/admin/settings': typeof AuthedAdminSettingsRoute
   '/_authed/admin/importers/$id': typeof AuthedAdminImportersIdRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/no-access'
     | '/invites/$token'
     | '/admin/settings'
     | '/admin/importers/$id'
@@ -103,6 +113,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/no-access'
     | '/invites/$token'
     | '/admin/settings'
     | '/admin/importers/$id'
@@ -113,6 +124,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authed'
     | '/login'
+    | '/no-access'
     | '/invites/$token'
     | '/_authed/admin/settings'
     | '/_authed/admin/importers/$id'
@@ -124,11 +136,19 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  NoAccessRoute: typeof NoAccessRoute
   InvitesTokenRoute: typeof InvitesTokenRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/no-access': {
+      id: '/no-access'
+      path: '/no-access'
+      fullPath: '/no-access'
+      preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -209,6 +229,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
+  NoAccessRoute: NoAccessRoute,
   InvitesTokenRoute: InvitesTokenRoute,
 }
 export const routeTree = rootRouteImport

@@ -10,7 +10,7 @@ import type { Env, Variables } from "../env.js";
  * returns **404, not 403**, to avoid leaking environment existence — same IDOR
  * pattern as cross-project access (PRD-002 §4 / PRD-004 Story 4 AC #6).
  *
- * Mount AFTER `requireSession`, so `c.var.session` is populated.
+ * Mount AFTER `requireAuth`, so `c.var.session` is populated.
  */
 export const withEnvironment: MiddlewareHandler<{
   Bindings: Env;

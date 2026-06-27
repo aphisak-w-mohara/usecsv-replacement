@@ -2,22 +2,23 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Env, Variables } from "../env.js";
-import { buildSetCookie, readSessionToken, updateSession } from "../lib/session.js";
 
 const switchEnvSchema = z.object({
   environment_id: z.string().min(1),
 });
 
 /**
- * Session-scoped endpoints under `/api/me`. Mounted behind `requireSession`.
+ * Session-scoped endpoints under `/api/me`. Mounted behind `requireAuth`.
  *
- * `GET /api/me` extends the raw session with `accessible_environments` so the
- * SPA can render the env switcher and gate UI: owners see every environment in
- * the project; members see only the ones they hold a grant for.
+ * `GET /api/me` extends the resolved session with `accessible_environments` so
+ * the SPA can render the env switcher and gate UI: owners see every environment
+ * in the project; members see only the ones they hold a grant for.
  *
  * `POST /api/me/environment` switches the active environment, validating the
- * target is accessible (owner → any env in the project; member → a granted env),
- * persisting it to the session (KV) and the user's `last_active_environment_id`.
+ * target is accessible (owner → any env in the project; member → a granted env).
+ * Auth is stateless, so there's nothing to mutate server-side beyond persisting
+ * the user's `last_active_environment_id` — the next request's `resolveSession`
+ * reads it back and lands the user on the chosen env.
  */
 export const meRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
   .get("/", async (c) => {
@@ -45,22 +46,15 @@ export const meRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
       return c.json({ error: "Not found" }, 404);
     }
 
-    const token = readSessionToken(c.req.header("Cookie"), c.env);
-    if (!token) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    await updateSession(c.env, token, { environment_id });
-
-    await c.env.DB.prepare("UPDATE users SET last_active_environment_id = ? WHERE id = ?")
-      .bind(environment_id, session.user.id)
+    // Persist the chosen env as last-active. Also pin last_active_project_id so
+    // the next request's resolveLanding honours this env within the project.
+    await c.env.DB.prepare(
+      "UPDATE users SET last_active_project_id = ?, last_active_environment_id = ? WHERE id = ?",
+    )
+      .bind(session.project_id, environment_id, session.user.id)
       .run();
 
-    return c.json(
-      { environment: target },
-      200,
-      // Re-issue the cookie so the rolling TTL window is preserved on switch.
-      { "Set-Cookie": buildSetCookie(c.env, token) },
-    );
+    return c.json({ environment: target }, 200);
   });
 
 type AccessibleEnv = { id: string; slug: string; name: string };

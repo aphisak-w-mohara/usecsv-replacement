@@ -1,10 +1,8 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { authedFetch, seedSession } from "./helpers/auth.js";
+import { authedFetch } from "./helpers/auth.js";
 
 const PROJECT = "proj_evo";
-
-beforeAll(() => seedSession(env));
 
 // allowed_email_domain is shared D1 state (isolatedStorage: false). Reset it
 // after every test so ordering can't leak a restriction into another test/file.
@@ -33,9 +31,7 @@ describe("PATCH /api/projects/:id (allowed_email_domain)", () => {
     const body = await res.json<{ allowed_email_domain: string | null }>();
     expect(body.allowed_email_domain).toBe("mohara.co");
 
-    const row = await env.DB.prepare(
-      "SELECT allowed_email_domain FROM projects WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT allowed_email_domain FROM projects WHERE id = ?")
       .bind(PROJECT)
       .first<{ allowed_email_domain: string | null }>();
     expect(row?.allowed_email_domain).toBe("mohara.co");
@@ -48,9 +44,7 @@ describe("PATCH /api/projects/:id (allowed_email_domain)", () => {
     const body = await res.json<{ allowed_email_domain: string | null }>();
     expect(body.allowed_email_domain).toBeNull();
 
-    const row = await env.DB.prepare(
-      "SELECT allowed_email_domain FROM projects WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT allowed_email_domain FROM projects WHERE id = ?")
       .bind(PROJECT)
       .first<{ allowed_email_domain: string | null }>();
     expect(row?.allowed_email_domain).toBeNull();
@@ -70,9 +64,7 @@ describe("PATCH /api/projects/:id (allowed_email_domain)", () => {
     const body = await res.json<{ error: string }>();
     expect(body.error).toMatch(/valid domain/i);
 
-    const row = await env.DB.prepare(
-      "SELECT allowed_email_domain FROM projects WHERE id = ?",
-    )
+    const row = await env.DB.prepare("SELECT allowed_email_domain FROM projects WHERE id = ?")
       .bind(PROJECT)
       .first<{ allowed_email_domain: string | null }>();
     expect(row?.allowed_email_domain).toBeNull();
@@ -146,7 +138,9 @@ describe("GET /api/projects/:id", () => {
 });
 
 describe("project settings owner-gating", () => {
-  const MEMBER_TOKEN = "projects-member";
+  // A real member (user + membership) in D1; the `local` seam authorizes by
+  // email, so 403s come from the owner gate — not from being unauthenticated.
+  const MEMBER_EMAIL = "projmember@mohara.co";
   beforeAll(async () => {
     await env.DB.prepare(
       `INSERT OR IGNORE INTO users (id, email, name, created_at)
@@ -158,25 +152,15 @@ describe("project settings owner-gating", () => {
     )
       .bind(PROJECT)
       .run();
-    await seedSession(env, {
-      token: MEMBER_TOKEN,
-      userId: "usr_proj_member",
-      projectId: PROJECT,
-      role: "member",
-    });
   });
 
   it("rejects a non-owner PATCH → 403", async () => {
-    const res = await patchDomain("mohara.co", MEMBER_TOKEN);
+    const res = await patchDomain("mohara.co", MEMBER_EMAIL);
     expect(res.status).toBe(403);
   });
 
   it("rejects a non-owner GET → 403", async () => {
-    const res = await authedFetch(
-      `https://example.com/api/projects/${PROJECT}`,
-      {},
-      MEMBER_TOKEN,
-    );
+    const res = await authedFetch(`https://example.com/api/projects/${PROJECT}`, {}, MEMBER_EMAIL);
     expect(res.status).toBe(403);
   });
 });

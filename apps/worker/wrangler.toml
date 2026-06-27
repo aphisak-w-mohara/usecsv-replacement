@@ -4,21 +4,24 @@ compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# `local` relaxes cookie security (drops Secure + the __Host- prefix) so the
-# session cookie works over plain http on the dev server. Deployed envs set
-# this to "staging"/"production" via `wrangler deploy --var` or a per-env block.
-ENVIRONMENT = "local"
-# OAuth client "EVO UseCSV" in GCP project evo-platform-193721. Client IDs are
-# public (they appear in the OAuth redirect URL); the secret lives in .dev.vars
-# (local) / `wrangler secret put` (deployed).
-GOOGLE_CLIENT_ID = "10301432215-a6jdhuvc6fkvrskns7uiimqdehfeinsp.apps.googleusercontent.com"
-GOOGLE_REDIRECT_URI = "http://localhost:8787/api/auth/google/callback"
+# SECURE DEFAULT: "production" → real Firebase ID tokens are always verified.
+# The "local" mode trusts the `X-Dev-Email` header and skips verification (an
+# intentional dev/test bypass), so it must NEVER be the committed/deployed value.
+# - Tests run "local" via an override in vitest.config.ts (not this file).
+# - Local dev runs "local" via apps/worker/.dev.vars (gitignored; see
+#   .dev.vars.example). `pnpm dev` picks it up.
+# This way a plain `wrangler deploy` ships the verified path; if FIREBASE_PROJECT_ID
+# is also unset the worker fails CLOSED (401), never open.
+ENVIRONMENT = "production"
+# The dedicated Firebase Authentication project whose ID tokens we trust. It
+# drives the JWKS issuer (`https://securetoken.google.com/<id>`) and the
+# expected token audience. Public value (it ships in the web config too); set
+# the deployed value via `wrangler deploy --var` or a per-env [vars] block.
+FIREBASE_PROJECT_ID = "REPLACE_WITH_FIREBASE_PROJECT_ID"
+# Local-only convenience: the email the `local` auth seam trusts when no
+# `X-Dev-Email` header is sent. Ignored entirely off `local`.
+DEV_EMAIL = "aphisak@mohara.co"
 APP_BASE_URL = "http://localhost:5173"
-# GOOGLE_CLIENT_SECRET is a real secret in deployed envs — set it with
-#   wrangler secret put GOOGLE_CLIENT_SECRET
-# A deployed secret shadows this var, so this obviously-fake value only ever
-# applies to local dev + the vitest pool (which reads [vars]).
-GOOGLE_CLIENT_SECRET = "test-secret"
 
 [[d1_databases]]
 binding = "DB"
@@ -29,15 +32,6 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "UPLOADS_BUCKET"
 bucket_name = "evo-csv-uploads"
-
-# Opaque sessions (session:<token>) and the short-lived OAuth PKCE state
-# (oauthstate:<state>) both live here. Miniflare simulates KV in dev + tests,
-# so the placeholder id below is fine locally. Before deploy, the operator runs
-#   wrangler kv namespace create SESSIONS
-# and pastes the returned id over REPLACE_WITH_KV_ID.
-[[kv_namespaces]]
-binding = "SESSIONS"
-id = "REPLACE_WITH_KV_ID"
 
 [[queues.producers]]
 binding = "WEBHOOK_QUEUE"

@@ -1,51 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock the typed RPC client so logout() doesn't make a real request.
-// `vi.hoisted` makes the spy available inside the hoisted vi.mock factory.
-const { logoutPost } = vi.hoisted(() => ({
-  logoutPost: vi.fn(async () => new Response(null, { status: 204 })),
-}));
-vi.mock("../src/lib/api", () => ({
-  api: { api: { auth: { logout: { $post: logoutPost } } } },
-}));
-
-import { googleLoginHref, logout } from "../src/lib/auth-nav";
-
-describe("googleLoginHref", () => {
-  it("returns the bare login URL when no return_to is given", () => {
-    expect(googleLoginHref()).toBe("/api/auth/google/login");
-  });
-
-  it("appends and URL-encodes return_to", () => {
-    expect(googleLoginHref("/admin/importers")).toBe(
-      "/api/auth/google/login?return_to=%2Fadmin%2Fimporters",
-    );
-  });
-
-  it("encodes query strings inside return_to so they don't leak as params", () => {
-    expect(googleLoginHref("/admin/importers?show=archived")).toBe(
-      "/api/auth/google/login?return_to=%2Fadmin%2Fimporters%3Fshow%3Darchived",
-    );
-  });
-
-  it("appends an invite_token alongside return_to", () => {
-    expect(googleLoginHref("/admin/importers", "tok123")).toBe(
-      "/api/auth/google/login?return_to=%2Fadmin%2Fimporters&invite_token=tok123",
-    );
-  });
-
-  it("appends an invite_token without a return_to", () => {
-    expect(googleLoginHref(undefined, "tok123")).toBe(
-      "/api/auth/google/login?invite_token=tok123",
-    );
-  });
+// Stateless auth: logout() signs out of Firebase (when configured) then
+// hard-navigates to /login. Mock the firebase wrapper + the SDK's signOut so the
+// test doesn't touch a real Firebase project.
+const { signOutSpy, getFirebaseAuthSpy, fakeAuth } = vi.hoisted(() => {
+  const fakeAuth = { __fake: "auth" };
+  return {
+    signOutSpy: vi.fn(async () => {}),
+    getFirebaseAuthSpy: vi.fn(() => fakeAuth),
+    fakeAuth,
+  };
 });
+
+vi.mock("firebase/auth", () => ({
+  signOut: signOutSpy,
+}));
+
+vi.mock("../src/lib/firebase", () => ({
+  firebaseConfigured: true,
+  getFirebaseAuth: getFirebaseAuthSpy,
+}));
+
+import { logout } from "../src/lib/auth-nav";
 
 describe("logout", () => {
   let hrefSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    logoutPost.mockClear();
+    signOutSpy.mockClear();
+    getFirebaseAuthSpy.mockClear();
     hrefSpy = vi.fn();
     // Replace window.location with a stub whose href setter we can observe.
     Object.defineProperty(window, "location", {
@@ -62,9 +45,16 @@ describe("logout", () => {
     vi.restoreAllMocks();
   });
 
-  it("POSTs to the logout endpoint then navigates to /login", async () => {
+  it("signs out of Firebase then navigates to /login", async () => {
     await logout();
-    expect(logoutPost).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(signOutSpy).toHaveBeenCalledWith(fakeAuth);
+    expect(hrefSpy).toHaveBeenCalledWith("/login");
+  });
+
+  it("still navigates to /login when signOut rejects", async () => {
+    signOutSpy.mockRejectedValueOnce(new Error("network"));
+    await logout();
     expect(hrefSpy).toHaveBeenCalledWith("/login");
   });
 });

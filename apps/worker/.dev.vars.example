@@ -1,7 +1,8 @@
-# Local dev secrets for `wrangler dev`. Copy to `.dev.vars` (gitignored) and fill in.
-# `.dev.vars` overrides the matching [vars] in wrangler.toml for local dev only.
-#
-# Google OAuth client secret for the "EVO UseCSV" client (GCP evo-platform-193721).
-# Paste the value you copied when the client/secret was created. For deployed
-# envs set it instead with:  wrangler secret put GOOGLE_CLIENT_SECRET
-GOOGLE_CLIENT_SECRET=
+# Local dev overrides for `wrangler dev`. Copy to `.dev.vars` (gitignored).
+# wrangler.toml ships ENVIRONMENT="production" (secure default) — these flip the
+# worker into the local auth seam so you can run the app without minting real
+# Firebase ID tokens. NEVER commit a .dev.vars; never set ENVIRONMENT=local in a
+# deployed env (it trusts the X-Dev-Email header / DEV_EMAIL and skips Firebase
+# verification).
+ENVIRONMENT=local
+DEV_EMAIL=aphisak@mohara.co

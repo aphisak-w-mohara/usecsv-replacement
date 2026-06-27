@@ -1,32 +1,23 @@
-import { api } from "./api";
+import { signOut } from "firebase/auth";
+import { firebaseConfigured, getFirebaseAuth } from "./firebase";
 
 /**
- * Build the browser-navigation URL that kicks off the Google OAuth flow.
+ * End the session and return to the login page.
  *
- * This is a full-page redirect target (set `window.location.href = ...`), NOT
- * an RPC/fetch call — the worker responds with a 302 to Google that the browser
- * must follow itself.
+ * Auth is stateless — there's no server session to clear. We sign the user out
+ * of Firebase (when configured) so the SDK drops the cached ID token, then
+ * hard-navigate to /login to discard all in-memory route state.
  *
- * @param returnTo optional in-app path to land on after a successful login.
- * @param inviteToken optional invite token threaded through OAuth state so the
- *   callback's invite-acceptance branch can materialize the membership.
- */
-export function googleLoginHref(returnTo?: string, inviteToken?: string): string {
-  const base = "/api/auth/google/login";
-  const params = new URLSearchParams();
-  if (returnTo) params.set("return_to", returnTo);
-  if (inviteToken) params.set("invite_token", inviteToken);
-  const qs = params.toString();
-  return qs ? `${base}?${qs}` : base;
-}
-
-/**
- * Clear the session server-side, then send the browser to the login page.
- *
- * The session cookie is HttpOnly, so the only way to end a session is to POST
- * to the worker; we then hard-navigate so all in-memory route state is dropped.
+ * DEV bypass: when Firebase isn't configured (local dev against the worker's
+ * email seam), there's no Firebase session to end — just navigate.
  */
 export async function logout(): Promise<void> {
-  await api.api.auth.logout.$post();
+  if (firebaseConfigured) {
+    try {
+      await signOut(getFirebaseAuth());
+    } catch {
+      // Ignore sign-out failures — we navigate away regardless.
+    }
+  }
   window.location.href = "/login";
 }

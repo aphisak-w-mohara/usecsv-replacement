@@ -1,8 +1,6 @@
 import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
-import { authedFetch, seedSession } from "./helpers/auth.js";
-
-beforeAll(() => seedSession(env));
+import { describe, expect, it } from "vitest";
+import { authedFetch } from "./helpers/auth.js";
 
 describe("GET /api/importers", () => {
   it("lists non-archived importers for the dev session's project with counts", async () => {

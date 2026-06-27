@@ -1,5 +1,3 @@
-import { googleLoginHref } from "../../lib/auth-nav";
-
 export type InviteInfo = {
   project_name: string;
   email: string;
@@ -7,22 +5,26 @@ export type InviteInfo = {
 };
 
 type Props = {
-  /** The invite token from the URL, threaded into the Google login redirect. */
-  token: string;
   /** Resolved invite details, or null while loading / on error. */
   invite: InviteInfo | null;
   /** True while the initial `GET /api/invites/:token` is in flight. */
   loading: boolean;
   /** True when the lookup returned 410 (expired / accepted / unknown). */
   gone: boolean;
+  /** Start Google sign-in. Acceptance is lazy: the first authed request whose
+   * email matches the pending invite materializes the membership server-side. */
+  onGoogleSignIn: () => void;
 };
 
 /**
- * Presentational invite-acceptance card. Kept free of router context so it can
- * be unit tested without scaffolding TanStack Router (the route component feeds
- * it the fetched invite + loading/gone flags).
+ * Presentational invite-acceptance card. Kept free of router context + the
+ * Firebase SDK so it can be unit tested directly (the route feeds it the fetched
+ * invite + flags + a sign-in handler).
+ *
+ * The invite token is no longer threaded through sign-in — acceptance happens
+ * lazily on the server by matching the verified email to the pending invite.
  */
-export function InviteAcceptCard({ token, invite, loading, gone }: Props) {
+export function InviteAcceptCard({ invite, loading, gone, onGoogleSignIn }: Props) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
       <div className="flex w-full max-w-sm flex-col gap-6 rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
@@ -44,9 +46,7 @@ export function InviteAcceptCard({ token, invite, loading, gone }: Props) {
             </p>
             <button
               type="button"
-              onClick={() => {
-                window.location.href = googleLoginHref("/admin/importers", token);
-              }}
+              onClick={onGoogleSignIn}
               className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Continue with Google

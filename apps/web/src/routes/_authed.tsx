@@ -3,6 +3,7 @@ import { useState } from "react";
 import { type AccessibleEnv, EnvSwitcher } from "../components/env-switcher";
 import { api } from "../lib/api";
 import { logout } from "../lib/auth-nav";
+import { firebaseConfigured, waitForFirebaseUser } from "../lib/firebase";
 
 export type Me = {
   user: { id: string; email: string; name: string; picture_url?: string | null };
@@ -13,17 +14,32 @@ export type Me = {
 };
 
 export const Route = createFileRoute("/_authed")({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async ({ location }): Promise<{ me: Me }> => {
     const toLogin = () => redirect({ to: "/login", search: { return_to: location.href } });
 
+    // Authentication gate. With Firebase configured, no signed-in user means
+    // bounce to /login. The DEV bypass (no Firebase config in dev) skips this
+    // and relies on the worker's local email seam to authorize.
+    if (firebaseConfigured) {
+      const user = await waitForFirebaseUser();
+      if (!user) {
+        throw toLogin();
+      }
+    }
+
+    // Authorization gate: the worker runs closed-signup against the verified
+    // identity. 401 → not authenticated (bounce to login); 403 → authenticated
+    // but not authorized → /no-access (an unauthenticated surface). We do NOT
+    // bounce a 403 to /login: they ARE signed in, so that would loop.
     let res: Awaited<ReturnType<typeof api.api.me.$get>>;
     try {
       res = await api.api.me.$get();
     } catch {
-      // Network failure → treat as unauthenticated.
       throw toLogin();
     }
-    // Any non-2xx (401 unauthorized, or anything else) → bounce to login.
+    if (res.status === 403) {
+      throw redirect({ to: "/no-access" });
+    }
     if (!res.ok) {
       throw toLogin();
     }

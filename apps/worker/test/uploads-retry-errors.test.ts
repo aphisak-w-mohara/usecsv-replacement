@@ -1,9 +1,7 @@
 import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { dispatchBatch } from "../src/lib/dispatch";
-import { authedFetch, seedSession } from "./helpers/auth.js";
-
-beforeAll(() => seedSession(env));
+import { authedFetch } from "./helpers/auth.js";
 
 const UPLOAD_BODY = {
   importer_environment_id: "impenv_tenants_staging",

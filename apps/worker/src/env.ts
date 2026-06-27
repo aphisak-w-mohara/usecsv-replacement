@@ -4,13 +4,15 @@ export type Env = {
   DB: D1Database;
   UPLOADS_BUCKET: R2Bucket;
   WEBHOOK_QUEUE: Queue<WebhookDispatchJob>;
-  // Opaque sessions + short-lived OAuth PKCE state.
-  SESSIONS: KVNamespace;
-  // "local" relaxes cookie security; deployed envs use "staging"/"production".
+  // "local" relaxes auth (trusts a dev email header/var, skipping Firebase
+  // token verification); deployed envs use "staging"/"production".
   ENVIRONMENT: string;
-  GOOGLE_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
-  GOOGLE_REDIRECT_URI: string;
+  // The Firebase project whose ID tokens we trust. Drives both the JWKS issuer
+  // (`https://securetoken.google.com/<id>`) and the expected audience.
+  FIREBASE_PROJECT_ID: string;
+  // Local/test-only convenience: the email trusted by the `local` auth seam
+  // when no `X-Dev-Email` header is present. Never consulted off `local`.
+  DEV_EMAIL: string;
   APP_BASE_URL: string;
 };
 

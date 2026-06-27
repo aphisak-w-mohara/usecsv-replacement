@@ -45,7 +45,7 @@ const requireProjectOwner: MiddlewareHandler<{ Bindings: Env; Variables: Variabl
 
 /**
  * Owner-only, project-scoped invite + members endpoints. Mounted behind
- * `requireSession` at `/api/projects`; `requireProjectOwner` gates every route.
+ * `requireAuth` at `/api/projects`; `requireProjectOwner` gates every route.
  */
 export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
   // `requireProjectOwner` matches `/:id/*` (subtree). The bare `/:id` paths
@@ -378,8 +378,8 @@ export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>(
   });
 
 /**
- * Unauthenticated invite lookup. Mounted BEFORE `requireSession` (alongside
- * `/api/auth`) so an invitee can preview the invite before signing in.
+ * Unauthenticated invite lookup. Mounted BEFORE `requireAuth` so an invitee can
+ * preview the invite before signing in.
  * Returns the project + role for a pending non-expired invite; 410 Gone for a
  * missing / expired / already-accepted token (so the SPA shows one message).
  */

@@ -7,11 +7,9 @@ declare module "cloudflare:test" {
     DB: D1Database;
     UPLOADS_BUCKET: R2Bucket;
     WEBHOOK_QUEUE: Queue;
-    SESSIONS: KVNamespace;
     ENVIRONMENT: string;
-    GOOGLE_CLIENT_ID: string;
-    GOOGLE_CLIENT_SECRET: string;
-    GOOGLE_REDIRECT_URI: string;
+    FIREBASE_PROJECT_ID: string;
+    DEV_EMAIL: string;
     APP_BASE_URL: string;
   }
 }

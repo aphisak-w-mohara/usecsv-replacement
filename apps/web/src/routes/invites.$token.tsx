@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { InviteAcceptCard, type InviteInfo } from "../components/auth/invite-accept-card";
 import { api } from "../lib/api";
+import { firebaseConfigured } from "../lib/firebase";
+import { startGoogleSignIn } from "../lib/firebase-login";
 
 export const Route = createFileRoute("/invites/$token")({
   component: InviteAcceptRoute,
@@ -40,5 +42,22 @@ function InviteAcceptRoute() {
     };
   }, [token]);
 
-  return <InviteAcceptCard token={token} invite={invite} loading={loading} gone={gone} />;
+  async function handleGoogle() {
+    if (!firebaseConfigured) {
+      // DEV bypass: no Firebase project — drop into the app; the worker's local
+      // seam authorizes via DEV_EMAIL and lazily accepts a matching invite.
+      window.location.href = "/admin/importers";
+      return;
+    }
+    await startGoogleSignIn();
+  }
+
+  return (
+    <InviteAcceptCard
+      invite={invite}
+      loading={loading}
+      gone={gone}
+      onGoogleSignIn={() => void handleGoogle()}
+    />
+  );
 }

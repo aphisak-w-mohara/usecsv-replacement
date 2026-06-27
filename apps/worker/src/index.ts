@@ -2,9 +2,8 @@ import type { WebhookDispatchJob } from "@evo-csv/shared";
 import { Hono } from "hono";
 import type { Env, Variables } from "./env.js";
 import { dispatchBatch } from "./lib/dispatch.js";
-import { requireSession } from "./middleware/require-session.js";
+import { requireAuth } from "./middleware/require-auth.js";
 import { withEnvironment } from "./middleware/with-environment.js";
-import { authRoutes } from "./routes/auth.js";
 import { importersRoutes } from "./routes/importers.js";
 import { projectsRoutes, publicInvitesRoutes } from "./routes/invites.js";
 import { meRoutes } from "./routes/me.js";
@@ -12,13 +11,13 @@ import { uploadsRoutes } from "./routes/uploads.js";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
   .get("/api/health", (c) => c.json({ ok: true }))
-  // Auth routes (login / callback / logout) must be reachable unauthenticated,
-  // so they mount BEFORE the session gate.
-  .route("/api/auth", authRoutes)
   // Public invite lookup: an invitee previews the invite before signing in, so
-  // it also mounts BEFORE the session gate.
+  // it mounts BEFORE the auth gate.
   .route("/api/invites", publicInvitesRoutes)
-  .use("/api/*", requireSession)
+  // Stateless auth gate: verifies the Firebase ID token (Authorization: Bearer)
+  // and runs the closed-signup gate per request. No logout endpoint — the SPA
+  // ends the session client-side via Firebase signOut().
+  .use("/api/*", requireAuth)
   .route("/api/me", meRoutes)
   // Env-scoped data: a member must hold a grant for the active environment, else
   // 404 (IDOR). Owners bypass. Project-level routes (`/api/projects`) are NOT
