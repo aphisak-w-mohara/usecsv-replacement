@@ -13,17 +13,17 @@ describe("migration 0004 — dispatch schema", () => {
       await env.DB.prepare(
         `INSERT OR IGNORE INTO uploads
            (id, numeric_id, project_id, importer_environment_id,
-            file_name, file_size, r2_source_key,
+            file_name, file_size,
             matched_columns_map, uploaded_file_headers,
             total_rows, batch_size, batch_count, status,
             created_at, updated_at)
          VALUES (?, ?, 'proj_evo', 'impenv_tenants_staging',
-                 'test.csv', 0, 'uploads/' || ? || '/source.csv',
+                 'test.csv', 0,
                  '{}', '[]',
                  1, 1000, 1, 'pending',
                  1, 1)`,
       )
-        .bind(id, numericId, id)
+        .bind(id, numericId)
         .run();
     }
   });
@@ -34,9 +34,11 @@ describe("migration 0004 — dispatch schema", () => {
   });
 
   it("upload_batches table accepts a row", async () => {
+    // r2_key was dropped in 0007 (payloads now live inline as a gzipped BLOB);
+    // the live schema after all migrations carries payload/payload_encoding.
     await env.DB.prepare(
-      `INSERT INTO upload_batches (upload_id, batch_index, r2_key, row_count, created_at)
-       VALUES ('upl_mig_a', 1, 'uploads/upl_mig_a/batches/1.json', 3, 1)`,
+      `INSERT INTO upload_batches (upload_id, batch_index, payload, row_count, created_at)
+       VALUES ('upl_mig_a', 1, X'1f8b', 3, 1)`,
     ).run();
     const row = await env.DB.prepare(
       "SELECT row_count FROM upload_batches WHERE upload_id = 'upl_mig_a' AND batch_index = 1",

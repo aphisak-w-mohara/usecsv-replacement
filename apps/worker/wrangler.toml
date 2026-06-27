@@ -3,18 +3,45 @@ main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Single-origin hosting: the built SPA ships alongside the Worker. The platform
+# serves matching static files directly; every other path invokes the Worker,
+# which routes /api/* to Hono and falls back to index.html for client routes.
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+# Unknown paths serve index.html (200, no redirect) so deep links / refreshes on
+# client routes work. The Worker runs first for every request (wrangler v3 only
+# supports the boolean form); index.ts routes /api/* to Hono and delegates the
+# rest to this binding, which serves the file or SPA-falls-back to index.html.
+not_found_handling = "single-page-application"
+run_worker_first = true
+
 [vars]
-DEV_USER_EMAIL = "aphisak@mohara.co"
+# SECURE DEFAULT: "production" → real Firebase ID tokens are always verified.
+# The "local" mode trusts the `X-Dev-Email` header and skips verification (an
+# intentional dev/test bypass), so it must NEVER be the committed/deployed value.
+# - Tests run "local" via an override in vitest.config.ts (not this file).
+# - Local dev runs "local" via apps/worker/.dev.vars (gitignored; see
+#   .dev.vars.example). `pnpm dev` picks it up.
+# This way a plain `wrangler deploy` ships the verified path; if FIREBASE_PROJECT_ID
+# is also unset the worker fails CLOSED (401), never open.
+ENVIRONMENT = "production"
+# The dedicated Firebase Authentication project whose ID tokens we trust. It
+# drives the JWKS issuer (`https://securetoken.google.com/<id>`) and the
+# expected token audience. Public value (it ships in the web config too); set
+# the deployed value via `wrangler deploy --var` or a per-env [vars] block.
+FIREBASE_PROJECT_ID = "evo-usecsv"
+# Local-only convenience: the email the `local` auth seam trusts when no
+# `X-Dev-Email` header is sent. Ignored entirely off `local`.
+DEV_EMAIL = "aphisak@mohara.co"
+# Prod SPA origin (single-origin with the API). Used for invite links.
+APP_BASE_URL = "https://evo-csv.aphisak.workers.dev"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "evo-csv-dev"
-database_id = "21b06102-dd71-4e58-a8ce-19118a48d472"
+database_id = "863559dd-5aa2-4ea5-8bf6-1ef1cacf8313"
 migrations_dir = "migrations"
-
-[[r2_buckets]]
-binding = "UPLOADS_BUCKET"
-bucket_name = "evo-csv-uploads"
 
 [[queues.producers]]
 binding = "WEBHOOK_QUEUE"

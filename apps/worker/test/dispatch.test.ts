@@ -1,6 +1,7 @@
-import { env, SELF } from "cloudflare:test";
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { dispatchBatch } from "../src/lib/dispatch";
+import { authedFetch } from "./helpers/auth.js";
 
 const UPLOAD_BODY = {
   importer_environment_id: "impenv_tenants_staging",
@@ -17,13 +18,13 @@ const UPLOAD_BODY = {
 
 async function seedUploadWithBatch(): Promise<string> {
   const created = await (
-    await SELF.fetch("https://example.com/api/uploads", {
+    await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(UPLOAD_BODY),
     })
   ).json<{ upload_id: string }>();
-  await SELF.fetch(`https://example.com/api/uploads/${created.upload_id}/batches/1`, {
+  await authedFetch(`https://example.com/api/uploads/${created.upload_id}/batches/1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ rows: [{ row: 1, first_name: "Alice" }] }),
@@ -34,10 +35,13 @@ async function seedUploadWithBatch(): Promise<string> {
 describe("dispatchBatch", () => {
   it("on 2xx with empty errors: records attempt, marks upload completed", async () => {
     const id = await seedUploadWithBatch();
-    const fakeFetch = async () =>
-      new Response(JSON.stringify({ errors: [] }), { status: 200 });
+    const fakeFetch = async () => new Response(JSON.stringify({ errors: [] }), { status: 200 });
 
-    await dispatchBatch(env, { uploadId: id, batchIndex: 1, attempt: 1 }, fakeFetch as typeof fetch);
+    await dispatchBatch(
+      env,
+      { uploadId: id, batchIndex: 1, attempt: 1 },
+      fakeFetch as typeof fetch,
+    );
 
     const attempt = await env.DB.prepare(
       "SELECT status_code, errors_json FROM webhook_attempts WHERE upload_id = ? AND batch_index = 1",
@@ -57,7 +61,11 @@ describe("dispatchBatch", () => {
     const fakeFetch = async () =>
       new Response(JSON.stringify({ errors: [{ row: 1, msg: "bad" }] }), { status: 200 });
 
-    await dispatchBatch(env, { uploadId: id, batchIndex: 1, attempt: 1 }, fakeFetch as typeof fetch);
+    await dispatchBatch(
+      env,
+      { uploadId: id, batchIndex: 1, attempt: 1 },
+      fakeFetch as typeof fetch,
+    );
 
     const attempt = await env.DB.prepare(
       "SELECT errors_json FROM webhook_attempts WHERE upload_id = ? AND batch_index = 1",
@@ -75,7 +83,11 @@ describe("dispatchBatch", () => {
     const id = await seedUploadWithBatch();
     const fakeFetch = async () => new Response("upstream boom", { status: 500 });
 
-    await dispatchBatch(env, { uploadId: id, batchIndex: 1, attempt: 6 }, fakeFetch as typeof fetch);
+    await dispatchBatch(
+      env,
+      { uploadId: id, batchIndex: 1, attempt: 6 },
+      fakeFetch as typeof fetch,
+    );
 
     const upload = await env.DB.prepare("SELECT status FROM uploads WHERE id = ?")
       .bind(id)

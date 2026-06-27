@@ -1,22 +1,51 @@
+import type { WebhookDispatchJob } from "@evo-csv/shared";
 import { Hono } from "hono";
 import type { Env, Variables } from "./env.js";
 import { dispatchBatch } from "./lib/dispatch.js";
-import { devSession } from "./middleware/dev-session.js";
+import { requireAuth } from "./middleware/require-auth.js";
+import { withEnvironment } from "./middleware/with-environment.js";
 import { importersRoutes } from "./routes/importers.js";
+import { projectsRoutes, publicInvitesRoutes } from "./routes/invites.js";
+import { meRoutes } from "./routes/me.js";
 import { uploadsRoutes } from "./routes/uploads.js";
-import type { WebhookDispatchJob } from "@evo-csv/shared";
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
   .get("/api/health", (c) => c.json({ ok: true }))
-  .use("/api/*", devSession)
-  .get("/api/whoami", (c) => c.json(c.get("session")))
+  // Public invite lookup: an invitee previews the invite before signing in, so
+  // it mounts BEFORE the auth gate.
+  .route("/api/invites", publicInvitesRoutes)
+  // Stateless auth gate: verifies the Firebase ID token (Authorization: Bearer)
+  // and runs the closed-signup gate per request. No logout endpoint — the SPA
+  // ends the session client-side via Firebase signOut().
+  .use("/api/*", requireAuth)
+  .route("/api/me", meRoutes)
+  // Env-scoped data: a member must hold a grant for the active environment, else
+  // 404 (IDOR). Owners bypass. Project-level routes (`/api/projects`) are NOT
+  // env-gated — they're owner-only via `requireProjectOwner` instead.
+  // Both the bare collection path and the `/*` subtree are gated — a bare
+  // `GET /api/importers` doesn't match the `/*` wildcard on its own.
+  .use("/api/importers", withEnvironment)
+  .use("/api/importers/*", withEnvironment)
+  .use("/api/uploads", withEnvironment)
+  .use("/api/uploads/*", withEnvironment)
   .route("/api/importers", importersRoutes)
+  .route("/api/projects", projectsRoutes)
   .route("/api/uploads", uploadsRoutes);
 
 export type AppType = typeof app;
 
 export default {
-  fetch: app.fetch,
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    const url = new URL(request.url);
+    // The Hono app owns the API; everything else is delegated to the asset
+    // binding, which serves the matching static file or — for unknown client
+    // routes — SPA-falls-back to index.html (not_found_handling, 200, no
+    // redirect). The Worker runs first for all paths (run_worker_first = true).
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+      return app.fetch(request, env, ctx);
+    }
+    return env.ASSETS.fetch(request);
+  },
   async queue(batch: MessageBatch<WebhookDispatchJob>, env: Env): Promise<void> {
     for (const message of batch.messages) {
       try {

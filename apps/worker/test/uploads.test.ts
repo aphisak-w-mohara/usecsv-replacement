@@ -1,5 +1,6 @@
-import { env, SELF } from "cloudflare:test";
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { authedFetch } from "./helpers/auth.js";
 
 const VALID_BODY = {
   importer_environment_id: "impenv_tenants_staging",
@@ -16,7 +17,7 @@ const VALID_BODY = {
 
 describe("POST /api/uploads (Story #2 — context form ingest)", () => {
   it("returns upload_id, numeric_id, and status=pending on a valid call", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(VALID_BODY),
@@ -31,7 +32,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
   });
 
   it("auto-fills user_payload with session email when null", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(VALID_BODY),
@@ -45,7 +46,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
   });
 
   it("preserves user_payload.userId when caller supplies one", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -65,7 +66,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
   });
 
   it("stores metadata_payload as-is when non-null", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -85,7 +86,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
   });
 
   it("rejects an invalid importer_environment_id with 404", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...VALID_BODY, importer_environment_id: "nope" }),
@@ -95,7 +96,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
 
   it("rejects oversized user_payload (>4KB) with 400", async () => {
     const giant = { padding: "x".repeat(5000) };
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...VALID_BODY, user_payload: giant }),
@@ -107,7 +108,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
 
   it("rejects oversized metadata_payload (>4KB) with 400", async () => {
     const giant = { padding: "x".repeat(5000) };
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...VALID_BODY, metadata_payload: giant }),
@@ -126,7 +127,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
     const size = new TextEncoder().encode(JSON.stringify(exactly4096)).byteLength;
     expect(size).toBe(4096);
 
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...VALID_BODY, user_payload: exactly4096 }),
@@ -136,7 +137,7 @@ describe("POST /api/uploads (Story #2 — context form ingest)", () => {
   });
 
   it("rejects total_rows = 0 (zod schema enforcement)", async () => {
-    const res = await SELF.fetch("https://example.com/api/uploads", {
+    const res = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...VALID_BODY, total_rows: 0 }),
@@ -150,7 +151,7 @@ describe("POST /api/uploads — idempotency", () => {
     const key = `idem-${crypto.randomUUID()}`;
     const headers = { "Content-Type": "application/json", "Idempotency-Key": key };
 
-    const first = await SELF.fetch("https://example.com/api/uploads", {
+    const first = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers,
       body: JSON.stringify(VALID_BODY),
@@ -158,7 +159,7 @@ describe("POST /api/uploads — idempotency", () => {
     expect(first.status).toBe(201);
     const firstBody = await first.json<{ upload_id: string; numeric_id: number }>();
 
-    const second = await SELF.fetch("https://example.com/api/uploads", {
+    const second = await authedFetch("https://example.com/api/uploads", {
       method: "POST",
       headers,
       body: JSON.stringify(VALID_BODY),
@@ -186,7 +187,7 @@ describe("POST /api/uploads — archived importer guard", () => {
     ).run();
 
     try {
-      const res = await SELF.fetch("https://example.com/api/uploads", {
+      const res = await authedFetch("https://example.com/api/uploads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(VALID_BODY),

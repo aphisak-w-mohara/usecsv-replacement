@@ -1,13 +1,16 @@
 import { applyD1Migrations, env } from "cloudflare:test";
-import { beforeAll, inject } from "vitest";
 import type { D1Migration } from "@cloudflare/vitest-pool-workers/config";
+import { beforeAll, inject } from "vitest";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
-    DEV_USER_EMAIL: string;
-    UPLOADS_BUCKET: R2Bucket;
+    ASSETS: Fetcher;
     WEBHOOK_QUEUE: Queue;
+    ENVIRONMENT: string;
+    FIREBASE_PROJECT_ID: string;
+    DEV_EMAIL: string;
+    APP_BASE_URL: string;
   }
 }
 

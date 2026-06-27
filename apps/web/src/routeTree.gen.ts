@@ -9,40 +9,91 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as NoAccessRouteImport } from './routes/no-access'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as InvitesTokenRouteImport } from './routes/invites.$token'
+import { Route as AuthedAdminSettingsRouteImport } from './routes/_authed/admin/settings'
 import { Route as AuthedAdminImportersIndexRouteImport } from './routes/_authed/admin/importers.index'
 import { Route as AuthedAdminImportersIdRouteImport } from './routes/_authed/admin/importers.$id'
 import { Route as AuthedAdminImportersIdUploadRouteImport } from './routes/_authed/admin/importers.$id_.upload'
 
+const NoAccessRoute = NoAccessRouteImport.update({
+  id: '/no-access',
+  path: '/no-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedRoute = AuthedRouteImport.update({
+  id: '/_authed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvitesTokenRoute = InvitesTokenRouteImport.update({
+  id: '/invites/$token',
+  path: '/invites/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedAdminSettingsRoute = AuthedAdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedAdminImportersIndexRoute =
   AuthedAdminImportersIndexRouteImport.update({
-    id: '/_authed/admin/importers/',
+    id: '/admin/importers/',
     path: '/admin/importers/',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => AuthedRoute,
   } as any)
 const AuthedAdminImportersIdRoute = AuthedAdminImportersIdRouteImport.update({
-  id: '/_authed/admin/importers/$id',
+  id: '/admin/importers/$id',
   path: '/admin/importers/$id',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedAdminImportersIdUploadRoute =
   AuthedAdminImportersIdUploadRouteImport.update({
-    id: '/_authed/admin/importers/$id_/upload',
+    id: '/admin/importers/$id_/upload',
     path: '/admin/importers/$id/upload',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => AuthedRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/no-access': typeof NoAccessRoute
+  '/invites/$token': typeof InvitesTokenRoute
+  '/admin/settings': typeof AuthedAdminSettingsRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/admin/importers/': typeof AuthedAdminImportersIndexRoute
   '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/no-access': typeof NoAccessRoute
+  '/invites/$token': typeof InvitesTokenRoute
+  '/admin/settings': typeof AuthedAdminSettingsRoute
   '/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/admin/importers': typeof AuthedAdminImportersIndexRoute
   '/admin/importers/$id/upload': typeof AuthedAdminImportersIdUploadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/_authed': typeof AuthedRouteWithChildren
+  '/login': typeof LoginRoute
+  '/no-access': typeof NoAccessRoute
+  '/invites/$token': typeof InvitesTokenRoute
+  '/_authed/admin/settings': typeof AuthedAdminSettingsRoute
   '/_authed/admin/importers/$id': typeof AuthedAdminImportersIdRoute
   '/_authed/admin/importers/': typeof AuthedAdminImportersIndexRoute
   '/_authed/admin/importers/$id_/upload': typeof AuthedAdminImportersIdUploadRoute
@@ -50,57 +101,136 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
+    | '/login'
+    | '/no-access'
+    | '/invites/$token'
+    | '/admin/settings'
     | '/admin/importers/$id'
     | '/admin/importers/'
     | '/admin/importers/$id/upload'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
+    | '/login'
+    | '/no-access'
+    | '/invites/$token'
+    | '/admin/settings'
     | '/admin/importers/$id'
     | '/admin/importers'
     | '/admin/importers/$id/upload'
   id:
     | '__root__'
+    | '/'
+    | '/_authed'
+    | '/login'
+    | '/no-access'
+    | '/invites/$token'
+    | '/_authed/admin/settings'
     | '/_authed/admin/importers/$id'
     | '/_authed/admin/importers/'
     | '/_authed/admin/importers/$id_/upload'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthedAdminImportersIdRoute: typeof AuthedAdminImportersIdRoute
-  AuthedAdminImportersIndexRoute: typeof AuthedAdminImportersIndexRoute
-  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute
+  IndexRoute: typeof IndexRoute
+  AuthedRoute: typeof AuthedRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  NoAccessRoute: typeof NoAccessRoute
+  InvitesTokenRoute: typeof InvitesTokenRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/no-access': {
+      id: '/no-access'
+      path: '/no-access'
+      fullPath: '/no-access'
+      preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed': {
+      id: '/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invites/$token': {
+      id: '/invites/$token'
+      path: '/invites/$token'
+      fullPath: '/invites/$token'
+      preLoaderRoute: typeof InvitesTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authed/admin/settings': {
+      id: '/_authed/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AuthedAdminSettingsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/admin/importers/': {
       id: '/_authed/admin/importers/'
       path: '/admin/importers'
       fullPath: '/admin/importers/'
       preLoaderRoute: typeof AuthedAdminImportersIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/admin/importers/$id': {
       id: '/_authed/admin/importers/$id'
       path: '/admin/importers/$id'
       fullPath: '/admin/importers/$id'
       preLoaderRoute: typeof AuthedAdminImportersIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/admin/importers/$id_/upload': {
       id: '/_authed/admin/importers/$id_/upload'
       path: '/admin/importers/$id/upload'
       fullPath: '/admin/importers/$id/upload'
       preLoaderRoute: typeof AuthedAdminImportersIdUploadRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AuthedRoute
     }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
+interface AuthedRouteChildren {
+  AuthedAdminSettingsRoute: typeof AuthedAdminSettingsRoute
+  AuthedAdminImportersIdRoute: typeof AuthedAdminImportersIdRoute
+  AuthedAdminImportersIndexRoute: typeof AuthedAdminImportersIndexRoute
+  AuthedAdminImportersIdUploadRoute: typeof AuthedAdminImportersIdUploadRoute
+}
+
+const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAdminSettingsRoute: AuthedAdminSettingsRoute,
   AuthedAdminImportersIdRoute: AuthedAdminImportersIdRoute,
   AuthedAdminImportersIndexRoute: AuthedAdminImportersIndexRoute,
   AuthedAdminImportersIdUploadRoute: AuthedAdminImportersIdUploadRoute,
+}
+
+const AuthedRouteWithChildren =
+  AuthedRoute._addFileChildren(AuthedRouteChildren)
+
+const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
+  AuthedRoute: AuthedRouteWithChildren,
+  LoginRoute: LoginRoute,
+  NoAccessRoute: NoAccessRoute,
+  InvitesTokenRoute: InvitesTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

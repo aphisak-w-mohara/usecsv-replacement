@@ -7,5 +7,8 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./test/setup.ts"],
     globals: true,
+    // The Playwright E2E specs live under e2e/ and import @playwright/test —
+    // they must NOT be picked up by the unit (vitest) runner.
+    exclude: ["node_modules/**", "dist/**", "e2e/**"],
   },
 });

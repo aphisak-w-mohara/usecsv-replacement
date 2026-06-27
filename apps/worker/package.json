@@ -15,14 +15,15 @@
   },
   "dependencies": {
     "@evo-csv/shared": "workspace:*",
-    "hono": "^4.6.0",
     "@hono/zod-validator": "^0.4.0",
+    "hono": "^4.6.0",
+    "jose": "^6.2.3",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.0",
     "@cloudflare/workers-types": "^4.20240909.0",
-    "wrangler": "^3.78.0",
     "vitest": "^2.1.0",
-    "@cloudflare/vitest-pool-workers": "^0.5.0"
+    "wrangler": "^3.78.0"
   }
 }
