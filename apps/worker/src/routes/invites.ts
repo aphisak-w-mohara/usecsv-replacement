@@ -24,6 +24,28 @@ const projectPatchSchema = z.object({
   allowed_email_domain: z.string().max(255).nullable(),
 });
 
+/** Kebab slug: lowercase alphanumerics separated by single hyphens. */
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Create-environment body. `name` is required; `slug` is optional and derived
+ * from the name when omitted. Slug is the per-project unique key (enforced by
+ * `UNIQUE(project_id, slug)` on the environments table).
+ */
+const environmentCreateSchema = z.object({
+  name: z.string().trim().min(1).max(64),
+  slug: z.string().trim().min(1).max(40).regex(SLUG_RE).optional(),
+});
+
+/** Derive a kebab slug from a free-text name. */
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 /**
  * Project-scope + owner gate for every `/:id/*` route below. Cross-project
  * access → 404 (IDOR: don't leak existence); non-owner → 403. Asserted once
@@ -306,6 +328,52 @@ export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>(
     } catch (err) {
       console.error("DB error in GET /api/projects/:id/grants:", err);
       return c.json({ error: "Database error listing grants" }, 500);
+    }
+  })
+  // Owner-only: create a new environment in the project. Slug must be unique
+  // within the project (DB `UNIQUE(project_id, slug)`); name must be distinct
+  // too (case-insensitive). New environments are never the default.
+  .post("/:id/environments", zValidator("json", environmentCreateSchema), async (c) => {
+    const session = c.get("session");
+    const body = c.req.valid("json");
+    const name = body.name;
+    const slug = body.slug ?? slugify(name);
+
+    if (!SLUG_RE.test(slug)) {
+      return c.json({ error: "Could not derive a valid slug from the name; provide a slug" }, 400);
+    }
+
+    try {
+      // Pre-check both keys for friendly 409s (DB UNIQUE(project_id, slug) is the
+      // backstop for slug). Name uniqueness is case-insensitive.
+      const clash = await c.env.DB.prepare(
+        `SELECT slug, name FROM environments
+         WHERE project_id = ? AND (slug = ? OR lower(name) = lower(?))`,
+      )
+        .bind(session.project_id, slug, name)
+        .first<{ slug: string; name: string }>();
+      if (clash) {
+        const field = clash.slug === slug ? "slug" : "name";
+        return c.json({ error: `An environment with this ${field} already exists` }, 409);
+      }
+
+      const id = generateId("env");
+      const now = Math.floor(Date.now() / 1000);
+      await c.env.DB.prepare(
+        `INSERT INTO environments (id, project_id, slug, name, is_default, created_at)
+         VALUES (?, ?, ?, ?, 0, ?)`,
+      )
+        .bind(id, session.project_id, slug, name, now)
+        .run();
+
+      return c.json({ environment: { id, slug, name, is_default: false } }, 201);
+    } catch (err) {
+      // Unique-constraint backstop for a race between the pre-check and insert.
+      if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
+        return c.json({ error: "An environment with this slug already exists" }, 409);
+      }
+      console.error("DB error in POST /api/projects/:id/environments:", err);
+      return c.json({ error: "Database error creating environment" }, 500);
     }
   })
   .put("/:id/environments/:env_id/grants/:user_id", async (c) => {
