@@ -1,7 +1,9 @@
 import type { WebhookDispatchJob } from "@evo-csv/shared";
 import { Hono } from "hono";
 import type { Env, Variables } from "./env.js";
+import { alertHaltedUploads } from "./lib/alerts.js";
 import { dispatchBatch } from "./lib/dispatch.js";
+import { purgeDeliveredPayloads } from "./lib/retention.js";
 import { requireAuth } from "./middleware/require-auth.js";
 import { withEnvironment } from "./middleware/with-environment.js";
 import { importersRoutes } from "./routes/importers.js";
@@ -58,5 +60,24 @@ export default {
       }
       message.ack();
     }
+  },
+  // Cron-triggered maintenance (see [triggers] in wrangler.toml). Kept thin: the
+  // real, unit-tested logic lives in lib/alerts.ts and lib/retention.ts.
+  //  - alertHaltedUploads: surface uploads that exhausted webhook retries (#74).
+  //  - purgeDeliveredPayloads: null out delivered client PII past retention (#75).
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Run the two jobs concurrently and independently — a slow/hanging alert
+    // webhook must not delay (or starve) the PII purge, and vice versa.
+    const now = Math.floor(Date.now() / 1000);
+    ctx.waitUntil(
+      Promise.allSettled([
+        alertHaltedUploads(env).catch((err) =>
+          console.error("scheduled: alertHaltedUploads threw:", err),
+        ),
+        purgeDeliveredPayloads(env, now).catch((err) =>
+          console.error("scheduled: purgeDeliveredPayloads threw:", err),
+        ),
+      ]),
+    );
   },
 };
