@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
+import { useCopy } from "../../lib/use-copy";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 type ImporterEnvironmentLite = {
   id: string;
@@ -21,6 +23,7 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
   const [revealed, setRevealed] = useState<string | null>(null);
   const [confirmingDisable, setConfirmingDisable] = useState(false);
   const [confirmingRotateKey, setConfirmingRotateKey] = useState(false);
+  const { copied, copy } = useCopy();
 
   async function enableSigning() {
     setBusy(true);
@@ -98,7 +101,7 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
   }
 
   function copySecret() {
-    if (revealed) void navigator.clipboard.writeText(revealed);
+    if (revealed) copy(revealed);
   }
 
   return (
@@ -180,7 +183,7 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
                 onClick={copySecret}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               >
-                Copy
+                {copied ? "Copied!" : "Copy"}
               </button>
             </div>
             <div className="flex justify-end">
@@ -216,49 +219,5 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
         />
       )}
     </section>
-  );
-}
-
-type ConfirmProps = {
-  title: string;
-  body: string;
-  confirmLabel: string;
-  danger?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-};
-
-function ConfirmDialog({ title, body, confirmLabel, danger, onCancel, onConfirm }: ConfirmProps) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 p-4"
-    >
-      <div className="flex w-full max-w-md flex-col gap-3 rounded-md bg-white p-6 shadow-lg">
-        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-        <p className="text-sm text-slate-600">{body}</p>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={
-              danger
-                ? "rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white"
-                : "rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-            }
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

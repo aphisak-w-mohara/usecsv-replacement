@@ -14,6 +14,7 @@ function InviteAcceptRoute() {
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [gone, setGone] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,16 +44,23 @@ function InviteAcceptRoute() {
   }, [token]);
 
   async function handleGoogle() {
+    if (signingIn) return;
     if (!firebaseConfigured) {
       // DEV bypass: no Firebase project — drop into the app; the worker's local
       // seam authorizes via DEV_EMAIL and lazily accepts a matching invite.
       window.location.href = "/admin/importers";
       return;
     }
-    await startGoogleSignIn();
-    // Popup resolved → signed in. Enter the app; requireAuth lazily materializes
-    // the matching invite into a membership on the first authed request.
-    window.location.href = "/admin/importers";
+    setSigningIn(true);
+    try {
+      await startGoogleSignIn();
+      // Popup resolved → signed in. Enter the app; requireAuth lazily materializes
+      // the matching invite into a membership on the first authed request.
+      window.location.href = "/admin/importers";
+    } catch {
+      // Popup dismissed or sign-in failed — re-enable the button so the user can retry.
+      setSigningIn(false);
+    }
   }
 
   return (
@@ -61,6 +69,7 @@ function InviteAcceptRoute() {
       loading={loading}
       gone={gone}
       onGoogleSignIn={() => void handleGoogle()}
+      signingIn={signingIn}
     />
   );
 }

@@ -14,6 +14,8 @@ type Props = {
   /** Start Google sign-in. Acceptance is lazy: the first authed request whose
    * email matches the pending invite materializes the membership server-side. */
   onGoogleSignIn: () => void;
+  /** True while Google sign-in is in flight — disables the button to block double-submit. */
+  signingIn?: boolean;
 };
 
 /**
@@ -24,7 +26,7 @@ type Props = {
  * The invite token is no longer threaded through sign-in — acceptance happens
  * lazily on the server by matching the verified email to the pending invite.
  */
-export function InviteAcceptCard({ invite, loading, gone, onGoogleSignIn }: Props) {
+export function InviteAcceptCard({ invite, loading, gone, onGoogleSignIn, signingIn }: Props) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
       <div className="flex w-full max-w-sm flex-col gap-6 rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
@@ -47,9 +49,11 @@ export function InviteAcceptCard({ invite, loading, gone, onGoogleSignIn }: Prop
             <button
               type="button"
               onClick={onGoogleSignIn}
-              className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              disabled={signingIn}
+              aria-busy={signingIn}
+              className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
-              Continue with Google
+              {signingIn ? "Signing in…" : "Continue with Google"}
             </button>
             <p className="text-center text-xs text-slate-400">
               Sign in with {invite.email} to accept.

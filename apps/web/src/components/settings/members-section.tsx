@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useCopy } from "../../lib/use-copy";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export type Member = {
   user_id: string;
@@ -55,7 +57,8 @@ export function MembersSection({
 }: Props) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"owner" | "member">("member");
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy();
+  const [pendingRevoke, setPendingRevoke] = useState<PendingInvite | null>(null);
 
   const trimmed = email.trim();
   const canCreate = trimmed.length > 0 && !creating;
@@ -68,10 +71,7 @@ export function MembersSection({
   }
 
   function copyUrl() {
-    if (createdInvite) {
-      void navigator.clipboard.writeText(createdInvite.invite_url);
-      setCopied(true);
-    }
+    if (createdInvite) copy(createdInvite.invite_url);
   }
 
   return (
@@ -132,7 +132,7 @@ export function MembersSection({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onRevoke(inv.id)}
+                  onClick={() => setPendingRevoke(inv)}
                   className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50"
                 >
                   Revoke
@@ -202,20 +202,36 @@ export function MembersSection({
               onClick={copyUrl}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
-              {copied ? "Copied" : "Copy"}
+              {copied ? "Copied!" : "Copy"}
             </button>
           </div>
           <button
             type="button"
-            onClick={() => {
-              setCopied(false);
-              onDismissCreated();
-            }}
+            onClick={onDismissCreated}
             className="self-start text-xs text-slate-500 underline"
           >
             Dismiss
           </button>
         </div>
+      )}
+
+      {pendingRevoke && (
+        <ConfirmDialog
+          title="Revoke this invite?"
+          body={
+            <>
+              <span className="font-medium">{pendingRevoke.email}</span> will no longer be able to
+              join with the existing link. You can always invite them again.
+            </>
+          }
+          confirmLabel="Revoke invite"
+          danger
+          onCancel={() => setPendingRevoke(null)}
+          onConfirm={() => {
+            onRevoke(pendingRevoke.id);
+            setPendingRevoke(null);
+          }}
+        />
       )}
     </section>
   );

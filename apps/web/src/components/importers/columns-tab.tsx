@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { ColumnEditor, EMPTY_DRAFT, type ColumnDraft, type ValidationType } from "./column-editor";
 
 type ColumnRow = ColumnDraft & {
@@ -323,48 +324,19 @@ export function ColumnsTab({ importerId }: Props) {
       )}
 
       {pendingDeleteId && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-confirm-title"
-          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30"
-        >
-          <div className="flex flex-col gap-4 rounded-md bg-white p-6 shadow-lg">
-            <h3 id="delete-confirm-title" className="text-base font-semibold text-slate-900">
-              Remove this column?
-            </h3>
-            <p className="max-w-sm text-sm text-slate-600">
-              Historical uploads keep their original column snapshot, but new uploads will no longer
-              include this column.
-            </p>
-            {deleteError && (
-              <p role="alert" className="text-sm text-red-700">
-                {deleteError}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingDeleteId(null);
-                  setDeleteError(null);
-                }}
-                disabled={saving}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDelete(pendingDeleteId)}
-                disabled={saving}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                Remove column
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Remove this column?"
+          body="Historical uploads keep their original column snapshot, but new uploads will no longer include this column."
+          confirmLabel="Remove column"
+          danger
+          busy={saving}
+          error={deleteError}
+          onCancel={() => {
+            setPendingDeleteId(null);
+            setDeleteError(null);
+          }}
+          onConfirm={() => void handleDelete(pendingDeleteId)}
+        />
       )}
     </div>
   );
