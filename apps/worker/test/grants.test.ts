@@ -214,6 +214,17 @@ describe("withEnvironment gate on env-scoped routes", () => {
     await authedFetch(grantUrl(STAGING, MEMBER_USER), { method: "DELETE" }, OWNER_EMAIL);
   });
 
+  it("fresh member granted ONLY a non-default env lands there (not stranded on default) → 200", async () => {
+    // last_active is NULL here (afterEach resets it). The member holds a grant
+    // for PRODUCTION only — a non-default env. resolveLanding must seat the
+    // fresh session on PRODUCTION, not the ungranted default STAGING (which
+    // would 404 every env-scoped route with no UI recourse).
+    await authedFetch(grantUrl(PRODUCTION, MEMBER_USER), { method: "PUT" }, OWNER_EMAIL);
+    const res = await authedFetch("https://example.com/api/importers", {}, MEMBER_EMAIL);
+    expect(res.status).toBe(200);
+    await authedFetch(grantUrl(PRODUCTION, MEMBER_USER), { method: "DELETE" }, OWNER_EMAIL);
+  });
+
   it("member whose active env (production) has no grant → 404, even with a staging grant", async () => {
     // Grant production, switch onto it (persists last_active = production), then
     // revoke the production grant: active env is production but the grant is gone.

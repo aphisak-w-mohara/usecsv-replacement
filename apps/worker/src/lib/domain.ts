@@ -1,5 +1,6 @@
-/** Email-domain helpers shared by the OAuth gate, invite creation, and the
- * project-settings PATCH (PRD-004 Story 5 — allowed_email_domain enforcement). */
+/** Email-domain helpers shared by the closed-signup gate (closed-signup.ts),
+ * invite creation, and the project-settings PATCH (PRD-004 Story 5 —
+ * allowed_email_domain enforcement). */
 
 /**
  * The domain part of an email (everything after the last `@`), lowercased.
@@ -9,7 +10,10 @@
 export function domainOf(email: string): string | null {
   const at = email.lastIndexOf("@");
   if (at === -1) return null;
-  const domain = email.slice(at + 1).trim().toLowerCase();
+  const domain = email
+    .slice(at + 1)
+    .trim()
+    .toLowerCase();
   return domain.length > 0 ? domain : null;
 }
 

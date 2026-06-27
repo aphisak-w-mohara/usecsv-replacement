@@ -1,6 +1,7 @@
 -- Invites (PRD-004 Story 3): owner invites a teammate by email.
--- A pending invite is materialized into a users row + membership when the
--- invitee completes Google SSO with the matching email (auth callback branch 3).
+-- A pending invite is materialized into a users row + membership lazily on the
+-- invitee's first authenticated request whose verified email matches
+-- (resolveSession branch 3 in lib/closed-signup.ts).
 CREATE TABLE invites (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id),

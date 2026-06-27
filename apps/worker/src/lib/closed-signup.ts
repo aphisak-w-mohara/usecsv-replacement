@@ -62,7 +62,9 @@ export async function resolveLanding(env: Env, user: UserRow): Promise<Membershi
   if (!first) return null;
 
   // Honour last-active values only if they still resolve to a membership the
-  // user holds and an environment in that project.
+  // user holds and an environment in that project. This is intentionally sticky
+  // even onto an env the member lacks a grant for: `withEnvironment` then returns
+  // 404, and we do NOT silently re-seat a pinned session onto a different env.
   if (user.last_active_project_id && user.last_active_environment_id) {
     const valid = await env.DB.prepare(
       `SELECT m.role AS role
@@ -77,6 +79,34 @@ export async function resolveLanding(env: Env, user: UserRow): Promise<Membershi
         project_id: user.last_active_project_id,
         environment_id: user.last_active_environment_id,
         role: valid.role,
+      };
+    }
+  }
+
+  // Fresh landing (no / invalid last-active). Owners land on the project's
+  // default env. Members land on an env they actually hold a grant for
+  // (default-first) — otherwise a member granted only a NON-default env would be
+  // seated on the ungranted default and stranded: every env-scoped route 404s
+  // and the single-env switcher offers no way out. A member with zero grants
+  // still falls through to the default env below, so `/api/me` returns no
+  // accessible envs and the SPA shows its "no environment access yet" screen
+  // (a 200 surface) rather than a hard 403.
+  if (first.role === "member") {
+    const granted = await env.DB.prepare(
+      `SELECT e.id AS environment_id
+         FROM environment_grants g
+         JOIN environments e ON e.id = g.environment_id AND e.project_id = g.project_id
+         WHERE g.user_id = ? AND g.project_id = ?
+         ORDER BY e.is_default DESC, e.slug ASC
+         LIMIT 1`,
+    )
+      .bind(user.id, first.project_id)
+      .first<{ environment_id: string }>();
+    if (granted) {
+      return {
+        project_id: first.project_id,
+        environment_id: granted.environment_id,
+        role: "member",
       };
     }
   }

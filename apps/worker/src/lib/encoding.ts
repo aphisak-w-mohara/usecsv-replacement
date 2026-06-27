@@ -1,4 +1,4 @@
-/** base64url + opaque-token helpers shared by the session store and OAuth code. */
+/** base64url + opaque-token helpers used by invite-token generation (invites.ts). */
 
 /** base64url-encode raw bytes (no padding). */
 export function base64urlEncode(bytes: Uint8Array): string {
