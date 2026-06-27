@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { useCopy } from "../../lib/use-copy";
 import { SigningSection } from "./signing-section";
 
 type ImporterEnvironment = {
@@ -140,7 +141,7 @@ function EnvironmentConfigForm({ importerId, envRow, onSaved }: FormProps) {
   const [includeUnmatched, setIncludeUnmatched] = useState(ie?.include_unmatched_columns ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy();
 
   const urlValid = /^https?:\/\//i.test(webhookUrl);
   const batchValid = batchSize >= BATCH_MIN && batchSize <= BATCH_MAX;
@@ -172,11 +173,7 @@ function EnvironmentConfigForm({ importerId, envRow, onSaved }: FormProps) {
 
   function handleCopyKey() {
     const k = envRow.importer_environment?.key;
-    if (!k) return;
-    void navigator.clipboard.writeText(k).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
+    if (k) copy(k);
   }
 
   return (

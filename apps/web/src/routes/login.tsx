@@ -44,20 +44,25 @@ export const Route = createFileRoute("/login")({
 function LoginRoute() {
   const { return_to } = Route.useSearch();
   const [notice, setNotice] = useState<string | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
 
   async function handleGoogle() {
+    if (signingIn) return;
     if (!firebaseConfigured) {
       // DEV bypass: no Firebase project — the worker's local seam authorizes via
       // DEV_EMAIL, so just enter the app.
       window.location.href = safeReturnTo(return_to);
       return;
     }
+    setSigningIn(true);
+    setNotice(null);
     try {
       await startGoogleSignIn();
       // Popup resolved → the user is signed in; enter the app.
       window.location.href = safeReturnTo(return_to);
     } catch {
       setNotice("Could not start Google sign-in. Try again.");
+      setSigningIn(false);
     }
   }
 
@@ -66,6 +71,7 @@ function LoginRoute() {
       mode={import.meta.env.MODE}
       onGoogleSignIn={() => void handleGoogle()}
       notice={notice}
+      loading={signingIn}
     />
   );
 }
