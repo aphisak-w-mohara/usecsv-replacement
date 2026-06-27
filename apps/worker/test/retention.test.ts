@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { Env } from "../src/env";
-import { purgeDeliveredPayloads } from "../src/lib/retention";
+import { purgeDeliveredPayloads, purgeStaleRateLimits } from "../src/lib/retention";
 import { authedFetch } from "./helpers/auth.js";
 
 const NOW = 1_800_000_000; // fixed "now" in unix seconds for deterministic tests.
@@ -106,5 +106,36 @@ describe("purgeDeliveredPayloads", () => {
     // the 10-day-old one stays.
     expect(await payloadPresent(oldDelivered)).toBe(false);
     expect(await payloadPresent(justRecent)).toBe(true);
+  });
+});
+
+describe("purgeStaleRateLimits", () => {
+  it("deletes rate-limit windows older than an hour, keeps recent ones", async () => {
+    const HOUR = 60 * 60;
+    const k = `test:${crypto.randomUUID()}`;
+    const stale = NOW - HOUR - 120; // > 1h old
+    const fresh = NOW - 60; // within the last hour
+    await env.DB.prepare("INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)")
+      .bind(k, stale)
+      .run();
+    await env.DB.prepare("INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)")
+      .bind(k, fresh)
+      .run();
+
+    const deleted = await purgeStaleRateLimits(env, NOW);
+    expect(deleted).toBeGreaterThanOrEqual(1);
+
+    const staleRow = await env.DB.prepare(
+      "SELECT 1 FROM rate_limits WHERE key = ? AND window_start = ?",
+    )
+      .bind(k, stale)
+      .first();
+    const freshRow = await env.DB.prepare(
+      "SELECT 1 FROM rate_limits WHERE key = ? AND window_start = ?",
+    )
+      .bind(k, fresh)
+      .first();
+    expect(staleRow).toBeNull();
+    expect(freshRow).not.toBeNull();
   });
 });

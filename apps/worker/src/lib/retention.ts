@@ -60,3 +60,21 @@ export async function purgeDeliveredPayloads(env: Env, nowSeconds: number): Prom
 
   return purged;
 }
+
+// Rate-limit counter rows (issue #76) are keyed by an absolute window-start
+// timestamp. Once a window is an hour old it can never be hit again, so prune it
+// to keep the rate_limits table bounded. One hour comfortably outlives the
+// 60s windows in use today.
+const RATE_LIMIT_RETENTION_SECONDS = 60 * 60;
+
+/**
+ * Delete rate_limits rows whose window closed more than an hour ago. Returns the
+ * number of rows deleted. Runs from the scheduled cron, off the request path.
+ */
+export async function purgeStaleRateLimits(env: Env, nowSeconds: number): Promise<number> {
+  const cutoff = nowSeconds - RATE_LIMIT_RETENTION_SECONDS;
+  const res = await env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?")
+    .bind(cutoff)
+    .run();
+  return res.meta.changes ?? 0;
+}
