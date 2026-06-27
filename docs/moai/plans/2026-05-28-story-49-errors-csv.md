@@ -1,5 +1,7 @@
 # Story 49 — Operator downloads row errors as CSV
 
+> **Superseded 2026-06-27:** batch payloads later moved from R2 to D1 (gzipped) — see [ADR-0002](../../adr/0002-no-r2-batch-payloads-in-d1.md). This plan's errors.csv path reads batch payloads from R2; the shipped code reads them from D1 instead. The original plan below is preserved unchanged as the historical record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or build to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve PRD-005's open question on the no-errors response (settle on **empty CSV with headers** — spreadsheet ergonomics over HTTP purity), close coverage gaps on duplicate row numbers / R2-miss / cross-env auth, and pin the `Content-Disposition` filename shape so the wizard's download CTA produces a sensible filename.
