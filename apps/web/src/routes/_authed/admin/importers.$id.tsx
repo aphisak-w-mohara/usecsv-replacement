@@ -10,6 +10,10 @@ import {
 } from "../../../components/importers/importer-general-tab";
 import { ColumnsTab } from "../../../components/importers/columns-tab";
 import { EnvironmentsTab } from "../../../components/importers/environments-tab";
+import { Alert } from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { ArrowLeftIcon, UploadIcon } from "../../../components/ui/icons";
+import { Spinner } from "../../../components/ui/spinner";
 import { api } from "../../../lib/api";
 
 export const Route = createFileRoute("/_authed/admin/importers/$id")({
@@ -103,10 +107,15 @@ function ImporterDetailRoute() {
   if (loadError) {
     return (
       <div className="flex flex-col gap-4 p-6">
-        <Link to="/admin/importers" className="text-sm text-slate-500 underline">
-          ← Back to importers
-        </Link>
-        <p className="text-sm text-red-700">{loadError}</p>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/admin/importers">
+            <ArrowLeftIcon className="size-4" />
+            Back to importers
+          </Link>
+        </Button>
+        <Alert tone="danger" title="Couldn’t load importer">
+          {loadError}
+        </Alert>
       </div>
     );
   }
@@ -114,28 +123,46 @@ function ImporterDetailRoute() {
   if (!importer) {
     return (
       <div className="flex flex-col gap-4 p-6">
-        <Link to="/admin/importers" className="text-sm text-slate-500 underline">
-          ← Back to importers
-        </Link>
-        <p className="text-sm text-slate-500">Loading importer…</p>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/admin/importers">
+            <ArrowLeftIcon className="size-4" />
+            Back to importers
+          </Link>
+        </Button>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner label="Loading importer" />
+          <span>Loading importer…</span>
+        </div>
       </div>
     );
   }
 
+  const uploadDisabled = importer.archived;
+
   return (
     <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <Link to="/admin/importers" className="text-sm text-slate-500 underline">
-          ← Back to importers
-        </Link>
-        {!importer.archived && (
-          <Link
-            to="/admin/importers/$id/upload"
-            params={{ id: importer.id }}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/admin/importers">
+            <ArrowLeftIcon className="size-4" />
+            Back to importers
+          </Link>
+        </Button>
+        {uploadDisabled ? (
+          <Button
+            disabled
+            icon={<UploadIcon className="size-4" />}
+            title="Archived importers can’t accept new uploads"
           >
             Upload data
-          </Link>
+          </Button>
+        ) : (
+          <Button asChild>
+            <Link to="/admin/importers/$id/upload" params={{ id: importer.id }}>
+              <UploadIcon className="size-4" />
+              Upload data
+            </Link>
+          </Button>
         )}
       </div>
       <ImporterDetailTabs

@@ -1,4 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
+import { EmptyState } from "../ui/empty-state";
+import { Field } from "../ui/field";
+import { InboxIcon, PlusIcon, SettingsIcon, UploadIcon } from "../ui/icons";
+import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
 
 export type ImporterListItem = {
   id: string;
@@ -62,98 +71,130 @@ export function ImporterListView({
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Importers</h1>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-foreground">Importers</h1>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input
             type="checkbox"
             checked={showArchived}
             onChange={(e) => onToggleArchived(e.target.checked)}
+            className="size-4 rounded border-input text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           Show archived
         </label>
       </header>
 
-      <form className="flex items-end gap-3" onSubmit={handleSubmit}>
-        <label className="flex flex-1 flex-col gap-1">
-          <span className="text-sm font-medium">New importer name</span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Properties"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={!canCreate}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      <Card>
+        <form
+          className="flex flex-col items-stretch gap-3 p-5 sm:flex-row sm:items-end"
+          onSubmit={handleSubmit}
         >
-          {creating ? "Creating…" : "Create importer"}
-        </button>
-      </form>
+          <Field label="New importer name" className="flex-1">
+            {(p) => (
+              <Input
+                {...p}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Properties"
+              />
+            )}
+          </Field>
+          <Button
+            type="submit"
+            disabled={!canCreate}
+            loading={creating}
+            icon={<PlusIcon className="size-4" />}
+          >
+            {creating ? "Creating…" : "Create importer"}
+          </Button>
+        </form>
+      </Card>
 
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading importers…</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner decorative />
+          <span>Loading importers…</span>
+        </div>
       ) : importers.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No importers yet — create your first importer above.
-        </p>
+        <EmptyState
+          icon={<InboxIcon className="size-6" />}
+          title="No importers yet"
+          description="Create your first importer above to start ingesting CSV data."
+        />
       ) : (
-        <ul className="flex flex-col divide-y divide-slate-200 rounded-md border border-slate-200">
-          {importers.map((importer) => (
-            <li key={importer.id} className="flex items-center justify-between gap-4 px-4 py-3">
-              <div className="flex min-w-0 flex-col">
-                <span className="text-sm font-medium text-slate-900">
-                  <button
-                    type="button"
-                    onClick={() => onOpen?.(importer.id)}
-                    className="text-left hover:underline"
-                  >
-                    {importer.name}
-                  </button>
-                  {importer.archived && (
-                    <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                      Archived
-                    </span>
-                  )}
-                </span>
-                <span className="text-xs text-slate-500">
-                  {pluralize(importer.column_count, "column")} ·{" "}
-                  {pluralize(importer.env_count, "environment")}
-                </span>
-                <span className="text-xs text-slate-400">
-                  Updated {formatUpdated(importer.updated_at)}
-                </span>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {!importer.archived && (
-                  <button
-                    type="button"
-                    onClick={() => onUpload?.(importer.id)}
-                    className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
-                  >
-                    Upload
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onOpen?.(importer.id)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Settings
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[36rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th scope="col" className="px-4 py-3">
+                    Name
+                  </th>
+                  <th scope="col" className="px-4 py-3">
+                    Details
+                  </th>
+                  <th scope="col" className="px-4 py-3">
+                    <span className="sr-only">Last modified</span>
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-right">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {importers.map((importer) => (
+                  <tr key={importer.id} className="border-b border-border last:border-b-0">
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onOpen?.(importer.id)}
+                          className="text-left font-medium text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        >
+                          {importer.name}
+                        </button>
+                        {importer.archived && <Badge tone="warning">Archived</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone="neutral">{pluralize(importer.column_count, "column")}</Badge>
+                        <Badge tone="neutral">{pluralize(importer.env_count, "environment")}</Badge>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top text-xs text-muted-foreground">
+                      Updated {formatUpdated(importer.updated_at)}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <div className="flex shrink-0 items-center justify-end gap-2">
+                        {!importer.archived && (
+                          <Button
+                            size="sm"
+                            onClick={() => onUpload?.(importer.id)}
+                            icon={<UploadIcon className="size-4" />}
+                          >
+                            Upload
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onOpen?.(importer.id)}
+                          icon={<SettingsIcon className="size-4" />}
+                        >
+                          Settings
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );

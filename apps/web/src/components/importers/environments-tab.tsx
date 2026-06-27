@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { cn } from "../../lib/cn";
 import { useCopy } from "../../lib/use-copy";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Field } from "../ui/field";
+import { CheckIcon, CopyIcon } from "../ui/icons";
+import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
 import { SigningSection } from "./signing-section";
 
 type ImporterEnvironment = {
@@ -64,15 +72,18 @@ export function EnvironmentsTab({ importerId }: Props) {
   }, [importerId]);
 
   if (loadError) {
-    return <p className="text-sm text-red-700">{loadError}</p>;
+    return <Alert tone="danger">{loadError}</Alert>;
   }
   if (envs === null) {
-    return <p className="text-sm text-slate-500">Loading environments…</p>;
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner />
+        Loading environments…
+      </div>
+    );
   }
   if (envs.length === 0) {
-    return (
-      <p className="text-sm text-slate-500">No environments configured yet for this project.</p>
-    );
+    return <Alert tone="info">No environments configured yet for this project.</Alert>;
   }
 
   const active = envs.find((e) => e.env_id === activeEnvId) ?? envs[0]!;
@@ -87,23 +98,30 @@ export function EnvironmentsTab({ importerId }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <nav className="flex gap-1 border-b border-slate-200">
+      <nav className="flex flex-wrap gap-1 border-b border-border">
         {envs.map((e) => {
           const selected = e.env_id === active.env_id;
           return (
             <button
               key={e.env_id}
               type="button"
+              aria-current={selected ? "page" : undefined}
               onClick={() => setActiveEnvId(e.env_id)}
-              className={
+              className={cn(
+                "flex items-center gap-2 border-b-2 px-3 py-2 text-sm transition-colors",
                 selected
-                  ? "border-b-2 border-slate-900 px-3 py-2 text-sm font-medium text-slate-900"
-                  : "border-b-2 border-transparent px-3 py-2 text-sm text-slate-500 hover:text-slate-900"
-              }
+                  ? "border-foreground font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
             >
-              {e.env_name}{" "}
-              {e.configured ? null : (
-                <span className="text-xs text-slate-400">· not configured</span>
+              <span>{e.env_name}</span>
+              {e.is_default && (
+                <Badge tone="primary" className="px-1.5 py-0">
+                  Default
+                </Badge>
+              )}
+              {!e.configured && (
+                <span className="text-xs text-muted-foreground">· not configured</span>
               )}
             </button>
           );
@@ -179,64 +197,68 @@ function EnvironmentConfigForm({ importerId, envRow, onSaved }: FormProps) {
   return (
     <div className="flex flex-col gap-4">
       {!envRow.configured && (
-        <p className="text-sm text-slate-500">
+        <Alert tone="info">
           This environment isn't configured yet. Fill in the form below and save to enable uploads.
-        </p>
+        </Alert>
       )}
 
       {envRow.importer_environment && (
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-slate-700">Public key (used by clients)</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={envRow.importer_environment.key}
-              readOnly
-              className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs"
-            />
-            <button
-              type="button"
-              onClick={handleCopyKey}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              {copied ? "Copied!" : "Copy"}
-            </button>
-          </div>
-        </div>
+        <Field label="Public key (used by clients)">
+          {(p) => (
+            <div className="flex gap-2">
+              <Input
+                {...p}
+                type="text"
+                value={envRow.importer_environment?.key ?? ""}
+                readOnly
+                className="flex-1 font-mono text-xs"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleCopyKey}
+                aria-label={copied ? "Copied" : "Copy public key"}
+                icon={copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
+              />
+            </div>
+          )}
+        </Field>
       )}
 
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-slate-700">Webhook URL *</span>
-        <input
-          type="url"
-          value={webhookUrl}
-          onChange={(e) => setWebhookUrl(e.target.value)}
-          placeholder="https://example.com/hooks/csv"
-          className="rounded-md border border-slate-300 px-3 py-2"
-        />
-        {!urlValid && webhookUrl.length > 0 && (
-          <span className="text-xs text-red-700">Must be an http(s) URL.</span>
+      <Field
+        label="Webhook URL"
+        required
+        error={!urlValid && webhookUrl.length > 0 ? "Must be an http(s) URL." : undefined}
+      >
+        {(p) => (
+          <Input
+            {...p}
+            type="url"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            placeholder="https://example.com/hooks/csv"
+          />
         )}
-      </label>
+      </Field>
 
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-slate-700">Batch size</span>
-        <input
-          type="number"
-          value={batchSize}
-          min={BATCH_MIN}
-          max={BATCH_MAX}
-          onChange={(e) => setBatchSize(Number(e.target.value))}
-          className="rounded-md border border-slate-300 px-3 py-2 sm:max-w-xs"
-        />
-        {!batchValid && (
-          <span className="text-xs text-red-700">
-            Must be between {BATCH_MIN} and {BATCH_MAX}.
-          </span>
+      <Field
+        label="Batch size"
+        error={!batchValid ? `Must be between ${BATCH_MIN} and ${BATCH_MAX}.` : undefined}
+      >
+        {(p) => (
+          <Input
+            {...p}
+            type="number"
+            value={batchSize}
+            min={BATCH_MIN}
+            max={BATCH_MAX}
+            onChange={(e) => setBatchSize(Number(e.target.value))}
+            className="sm:max-w-xs"
+          />
         )}
-      </label>
+      </Field>
 
-      <fieldset className="flex flex-col gap-2 text-sm">
+      <fieldset className="flex flex-col gap-2 text-sm text-foreground">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -255,21 +277,12 @@ function EnvironmentConfigForm({ importerId, envRow, onSaved }: FormProps) {
         </label>
       </fieldset>
 
-      {error && (
-        <p role="alert" className="text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button onClick={handleSave} disabled={!canSave} loading={saving}>
           {envRow.configured ? "Save" : "Save and enable"}
-        </button>
+        </Button>
       </div>
     </div>
   );

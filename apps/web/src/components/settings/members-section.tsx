@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useCopy } from "../../lib/use-copy";
+import { Alert } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { EmptyState } from "../ui/empty-state";
+import { Field } from "../ui/field";
+import { CheckIcon, CopyIcon, InboxIcon, UsersIcon } from "../ui/icons";
+import { Input } from "../ui/input";
+import { Select } from "../ui/select";
+import { Spinner } from "../ui/spinner";
 
 export type Member = {
   user_id: string;
@@ -39,8 +48,20 @@ type Props = {
   onDismissCreated: () => void;
 };
 
+/** Human-readable countdown from now to an `expires_at` epoch-seconds value. */
 function formatExpiry(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString();
+  const diffMs = seconds * 1000 - Date.now();
+  if (diffMs <= 0) return "expired";
+  const minutes = Math.round(diffMs / 60_000);
+  if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `in ${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.round(hours / 24);
+  return `in ${days} day${days === 1 ? "" : "s"}`;
+}
+
+function RoleBadge({ role }: { role: "owner" | "member" }) {
+  return <Badge tone={role === "owner" ? "primary" : "neutral"}>{role}</Badge>;
 }
 
 export function MembersSection({
@@ -76,37 +97,32 @@ export function MembersSection({
 
   return (
     <section className="flex flex-col gap-6">
-      <header>
-        <h2 className="text-lg font-semibold text-slate-900">Members</h2>
-        <p className="text-sm text-slate-500">
-          Invite teammates and manage who has access to this project.
-        </p>
-      </header>
-
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {/* Current members (read-only) */}
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium text-slate-700">Current members</h3>
+        <h3 className="text-sm font-medium text-foreground">Current members</h3>
         {loading ? (
-          <p className="text-sm text-slate-500">Loading members…</p>
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="size-4" /> Loading members…
+          </p>
         ) : members.length === 0 ? (
-          <p className="text-sm text-slate-500">No members yet.</p>
+          <EmptyState
+            icon={<UsersIcon className="size-6" />}
+            title="No members yet"
+            description="Invite a teammate below to give them access to this project."
+          />
         ) : (
-          <ul className="flex flex-col divide-y divide-slate-200 rounded-md border border-slate-200">
+          <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
             {members.map((m) => (
-              <li key={m.user_id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-slate-900">{m.name || m.email}</span>
-                  <span className="text-xs text-slate-500">{m.email}</span>
+              <li key={m.user_id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {m.name || m.email}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">{m.email}</span>
                 </div>
-                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                  {m.role}
-                </span>
+                <RoleBadge role={m.role} />
               </li>
             ))}
           </ul>
@@ -115,28 +131,31 @@ export function MembersSection({
 
       {/* Pending invites */}
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium text-slate-700">Pending invites</h3>
+        <h3 className="text-sm font-medium text-foreground">Pending invites</h3>
         {loading ? (
-          <p className="text-sm text-slate-500">Loading invites…</p>
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="size-4" /> Loading invites…
+          </p>
         ) : invites.length === 0 ? (
-          <p className="text-sm text-slate-500">No pending invites.</p>
+          <EmptyState
+            icon={<InboxIcon className="size-6" />}
+            title="No pending invites"
+            description="Invites you create will appear here until they're accepted."
+          />
         ) : (
-          <ul className="flex flex-col divide-y divide-slate-200 rounded-md border border-slate-200">
+          <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
             {invites.map((inv) => (
-              <li key={inv.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-slate-900">{inv.email}</span>
-                  <span className="text-xs text-slate-500">
-                    {inv.role} · expires {formatExpiry(inv.expires_at)}
+              <li key={inv.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="truncate text-sm font-medium text-foreground">{inv.email}</span>
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <RoleBadge role={inv.role} />
+                    <span>expires {formatExpiry(inv.expires_at)}</span>
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPendingRevoke(inv)}
-                  className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50"
-                >
+                <Button variant="danger" size="sm" onClick={() => setPendingRevoke(inv)}>
                   Revoke
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -145,74 +164,75 @@ export function MembersSection({
 
       {/* Invite form */}
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        <h3 className="text-sm font-medium text-slate-700">Invite member</h3>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-1 flex-col gap-1">
-            <span className="text-sm font-medium">Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="teammate@mohara.co"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Role</span>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as "owner" | "member")}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="member">member</option>
-              <option value="owner">owner</option>
-            </select>
-          </label>
-          <button
-            type="submit"
-            disabled={!canCreate}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {creating ? "Inviting…" : "Invite member"}
-          </button>
+        <h3 className="text-sm font-medium text-foreground">Invite member</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Field label="Email" required className="flex-1">
+            {(p) => (
+              <Input
+                {...p}
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="teammate@mohara.co"
+              />
+            )}
+          </Field>
+          <Field label="Role" className="sm:w-40">
+            {(p) => (
+              <Select
+                {...p}
+                value={role}
+                onChange={(e) => setRole(e.target.value as "owner" | "member")}
+              >
+                <option value="member">member</option>
+                <option value="owner">owner</option>
+              </Select>
+            )}
+          </Field>
+          <Button type="submit" loading={creating} disabled={!canCreate}>
+            Invite member
+          </Button>
         </div>
-        {createError && (
-          <p role="alert" className="text-sm text-red-700">
-            {createError}
-          </p>
-        )}
+        {createError && <Alert tone="danger">{createError}</Alert>}
       </form>
 
       {/* Created invite — copy + send manually */}
       {createdInvite && (
-        <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm text-slate-700">
-            Send this link to <span className="font-medium">{createdInvite.email}</span>.
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={createdInvite.invite_url}
-              readOnly
-              aria-label="Invite link"
-              className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs"
-            />
-            <button
+        <Alert tone="success" title="Invite created">
+          <div className="flex flex-col gap-3">
+            <p>
+              Send this link to <span className="font-medium">{createdInvite.email}</span>.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                type="text"
+                value={createdInvite.invite_url}
+                readOnly
+                aria-label="Invite link"
+                className="flex-1 font-mono text-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
+                onClick={copyUrl}
+              >
+                {copied ? "Copied!" : "Copy"}
+              </Button>
+            </div>
+            <Button
               type="button"
-              onClick={copyUrl}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onClick={onDismissCreated}
             >
-              {copied ? "Copied!" : "Copy"}
-            </button>
+              Dismiss
+            </Button>
           </div>
-          <button
-            type="button"
-            onClick={onDismissCreated}
-            className="self-start text-xs text-slate-500 underline"
-          >
-            Dismiss
-          </button>
-        </div>
+        </Alert>
       )}
 
       {pendingRevoke && (

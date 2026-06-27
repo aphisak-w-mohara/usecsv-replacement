@@ -65,12 +65,12 @@ export function EditableCell({ value, validation, onCommit }: EditableCellProps)
             }
           }}
           onBlur={tryCommit}
-          className="block w-full bg-white px-2 py-0.5 outline outline-2 outline-blue-500"
+          className="block w-full rounded-sm border border-primary bg-card px-2 py-0.5 text-foreground outline-2 outline-offset-0 outline-ring"
         />
         {tooLarge && (
           <span
             role="alert"
-            className="absolute left-0 top-full z-10 mt-0.5 rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-700"
+            className="absolute left-0 top-full z-10 mt-0.5 rounded border border-danger/30 bg-danger-subtle px-2 py-0.5 text-xs text-danger-subtle-foreground"
           >
             Cell value too large (over 64 KB)
           </span>
@@ -88,10 +88,10 @@ export function EditableCell({ value, validation, onCommit }: EditableCellProps)
       title={validation && !validation.ok ? validation.message : undefined}
       className={
         isError
-          ? "block cursor-pointer bg-red-50 px-2 text-red-900 hover:bg-red-100"
+          ? "block cursor-pointer bg-danger-subtle px-2 text-danger-subtle-foreground hover:opacity-90"
           : isWarn
-            ? "block cursor-pointer bg-yellow-50 px-2 text-yellow-900 hover:bg-yellow-100"
-            : "block cursor-pointer px-2 hover:bg-slate-100"
+            ? "block cursor-pointer bg-warning-subtle px-2 text-warning-subtle-foreground hover:opacity-90"
+            : "block cursor-pointer px-2 hover:bg-muted"
       }
     >
       {isError ? "⚠ " : ""}

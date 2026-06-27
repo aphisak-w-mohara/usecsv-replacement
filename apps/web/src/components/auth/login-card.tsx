@@ -1,3 +1,6 @@
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+
 type Props = {
   /** Build/runtime mode shown as a small dev fingerprint. */
   mode?: string;
@@ -19,30 +22,26 @@ type Props = {
  */
 export function LoginCard({ mode, onGoogleSignIn, notice, loading }: Props) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-      <div className="flex w-full max-w-sm flex-col gap-6 rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8 sm:px-6">
+      <div className="flex w-full max-w-sm flex-col gap-6 rounded-lg border border-border bg-card p-8 text-card-foreground shadow-sm">
         <div className="flex flex-col gap-1 text-center">
-          <h1 className="text-lg font-semibold text-slate-900">evo-csv</h1>
-          <p className="text-sm text-slate-500">Sign in to continue</p>
+          <h1 className="text-lg font-semibold text-foreground">evo-csv</h1>
+          <p className="text-sm text-muted-foreground">Sign in to continue</p>
         </div>
 
-        {notice ? (
-          <p role="alert" className="text-center text-sm text-slate-600">
-            {notice}
-          </p>
-        ) : null}
+        {notice ? <Alert tone="danger">{notice}</Alert> : null}
 
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="lg"
+          className="w-full"
           onClick={onGoogleSignIn}
-          disabled={loading}
-          aria-busy={loading}
-          className="w-full rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          loading={loading}
         >
           {loading ? "Signing in…" : "Continue with Google"}
-        </button>
+        </Button>
 
-        {mode ? <p className="text-center text-xs text-slate-400">{mode}</p> : null}
+        {mode ? <p className="text-center text-xs text-muted-foreground">{mode}</p> : null}
       </div>
     </div>
   );

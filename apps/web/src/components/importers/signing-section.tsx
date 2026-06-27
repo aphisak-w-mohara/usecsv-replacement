@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { useCopy } from "../../lib/use-copy";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { CheckIcon, CopyIcon } from "../ui/icons";
+import { Input } from "../ui/input";
+import { Modal } from "../ui/modal";
 
 type ImporterEnvironmentLite = {
   id: string;
@@ -105,99 +110,60 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
   }
 
   return (
-    <section className="flex flex-col gap-3 border-t border-slate-200 pt-6">
-      <h2 className="text-sm font-medium text-slate-700">Webhook signing</h2>
-      <p className="text-xs text-slate-500">
+    <section className="flex flex-col gap-3 border-t border-border pt-6">
+      <h2 className="text-sm font-medium text-foreground">Webhook signing</h2>
+      <p className="text-xs text-muted-foreground">
         When enabled, the worker signs each webhook delivery with an HMAC of the request body so
         your receiver can verify authenticity.
       </p>
 
       {!ie.webhook_signing_enabled ? (
-        <button
-          type="button"
-          onClick={() => void enableSigning()}
-          disabled={busy}
-          className="self-start rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          Enable signing
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void enableSigning()} loading={busy}>
+            Enable signing
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void rotateSecret()}
-            disabled={busy}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
-          >
+          <Button variant="outline" onClick={() => void rotateSecret()} disabled={busy}>
             Rotate secret
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingRotateKey(true)}
-            disabled={busy}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="outline" onClick={() => setConfirmingRotateKey(true)} disabled={busy}>
             Rotate public key
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingDisable(true)}
-            disabled={busy}
-            className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-700 disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="danger" onClick={() => setConfirmingDisable(true)} disabled={busy}>
             Disable signing
-          </button>
+          </Button>
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="text-sm text-red-700">
-          {error}
-        </p>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      {revealed && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="secret-reveal-title"
-          className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div className="flex w-full max-w-lg flex-col gap-3 rounded-md bg-white p-6 shadow-lg">
-            <h3 id="secret-reveal-title" className="text-base font-semibold text-slate-900">
-              Store this secret now
-            </h3>
-            <p className="text-sm text-amber-700">
-              You won't be able to see this secret again. Store it somewhere safe before closing
-              this dialog.
-            </p>
+      <Modal
+        open={revealed !== null}
+        onClose={() => setRevealed(null)}
+        title="Store this secret now"
+        footer={<Button onClick={() => setRevealed(null)}>I've stored it</Button>}
+      >
+        <div className="flex flex-col gap-3">
+          <Alert tone="warning">
+            You won't be able to see this secret again. Store it somewhere safe before closing this
+            dialog.
+          </Alert>
+          {revealed && (
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={revealed}
-                readOnly
-                className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs"
-              />
-              <button
-                type="button"
+              <Input type="text" value={revealed} readOnly className="flex-1 font-mono text-xs" />
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={copySecret}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                {copied ? "Copied!" : "Copy"}
-              </button>
+                aria-label={copied ? "Copied" : "Copy secret"}
+                icon={copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
+              />
             </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setRevealed(null)}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-              >
-                I've stored it
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </Modal>
 
       {confirmingDisable && (
         <ConfirmDialog
@@ -205,6 +171,7 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
           body="This will clear the stored secret. You'll need to enable signing again to generate a new one."
           confirmLabel="Disable signing"
           danger
+          busy={busy}
           onCancel={() => setConfirmingDisable(false)}
           onConfirm={() => void disableSigning()}
         />
@@ -214,6 +181,7 @@ export function SigningSection({ importerId, envId, importerEnvironment: ie, onU
           title="Rotate the public key?"
           body="Any clients still using the old key will start receiving 404s on upload. Make sure they have the new key before rotating."
           confirmLabel="Rotate key"
+          busy={busy}
           onCancel={() => setConfirmingRotateKey(false)}
           onConfirm={() => void rotateKey()}
         />

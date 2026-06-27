@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 import { validateJsonField } from "../../lib/json-validate";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 export type StepContextSubmit = {
   ticketReference: string;
@@ -58,91 +63,105 @@ export function StepContext({ onSubmit }: Props) {
       }}
     >
       <header>
-        <h2 className="text-lg font-semibold text-slate-900">Upload context</h2>
-        <p className="text-sm text-slate-600">
+        <h2 className="text-lg font-semibold text-foreground">Upload context</h2>
+        <p className="text-sm text-muted-foreground">
           Optional. Attach a ticket reference and a note so this import is easy to trace later. All
           fields are optional.
         </p>
       </header>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Ticket reference</span>
-        <input
-          type="text"
-          value={ticketReference}
-          onChange={(e) => setTicketReference(e.target.value)}
-          placeholder="EVO-1234"
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </label>
+      <Field label="Ticket reference" optional>
+        {(p) => (
+          <Input
+            {...p}
+            type="text"
+            value={ticketReference}
+            onChange={(e) => setTicketReference(e.target.value)}
+            placeholder="EVO-1234"
+          />
+        )}
+      </Field>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Note</span>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Onboarding Smith Property Group, batch 1 of 3"
-          rows={3}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </label>
+      <Field label="Note" optional>
+        {(p) => (
+          <Textarea
+            {...p}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Onboarding Smith Property Group, batch 1 of 3"
+            rows={3}
+          />
+        )}
+      </Field>
 
       <div>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => setAdvancedOpen((open) => !open)}
-          className="text-sm font-medium text-slate-700 underline"
           aria-expanded={advancedOpen}
+          aria-controls="advanced-json-payloads"
         >
           {advancedOpen ? "Hide advanced" : "Show advanced (raw JSON payloads)"}
-        </button>
+        </Button>
       </div>
 
       {advancedOpen && (
-        <div className="flex flex-col gap-5 rounded-md border border-slate-200 bg-slate-50 p-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">User payload (JSON)</span>
-            <textarea
-              value={userPayloadRaw}
-              onChange={(e) => setUserPayloadRaw(e.target.value)}
-              placeholder='{"userId": "custom"}'
-              rows={4}
-              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-            />
-            {!userPayloadResult.ok && (
-              <span className="text-xs text-red-600">{userPayloadResult.message}</span>
+        <div
+          id="advanced-json-payloads"
+          className="flex flex-col gap-5 rounded-md border border-border bg-muted p-4"
+        >
+          <Field
+            label="User payload (JSON)"
+            error={!userPayloadResult.ok ? userPayloadResult.message : undefined}
+            hint={
+              <>
+                Leave empty to auto-fill <code>userId</code> with your signed-in email.
+              </>
+            }
+          >
+            {(p) => (
+              <Textarea
+                {...p}
+                value={userPayloadRaw}
+                onChange={(e) => setUserPayloadRaw(e.target.value)}
+                placeholder='{"userId": "custom"}'
+                rows={4}
+                className="font-mono text-xs"
+                invalid={!userPayloadResult.ok}
+              />
             )}
-            <span className="text-xs text-slate-500">
-              Leave empty to auto-fill <code>userId</code> with your signed-in email.
-            </span>
-          </label>
+          </Field>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Metadata payload (JSON)</span>
-            <textarea
-              value={metadataPayloadRaw}
-              onChange={(e) => setMetadataPayloadRaw(e.target.value)}
-              placeholder='{"custom": "value"}'
-              rows={4}
-              className="rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-            />
-            {!metadataPayloadResult.ok && (
-              <span className="text-xs text-red-600">{metadataPayloadResult.message}</span>
+          <Field
+            label="Metadata payload (JSON)"
+            error={!metadataPayloadResult.ok ? metadataPayloadResult.message : undefined}
+            hint="Overrides the ticket reference + note packing if set."
+          >
+            {(p) => (
+              <Textarea
+                {...p}
+                value={metadataPayloadRaw}
+                onChange={(e) => setMetadataPayloadRaw(e.target.value)}
+                placeholder='{"custom": "value"}'
+                rows={4}
+                className="font-mono text-xs"
+                invalid={!metadataPayloadResult.ok}
+              />
             )}
-            <span className="text-xs text-slate-500">
-              Overrides the ticket reference + note packing if set.
-            </span>
-          </label>
+          </Field>
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={!canSubmit}
-        className="self-end rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
+      {!canSubmit && (
+        <Alert tone="danger" title="Fix JSON before continuing">
+          One or more payloads contain invalid JSON.
+        </Alert>
+      )}
+
+      <Button type="submit" disabled={!canSubmit} className="self-end">
         Next
-      </button>
+      </Button>
     </form>
   );
 }

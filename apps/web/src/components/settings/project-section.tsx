@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
 
 type Props = {
   /** The saved domain restriction, or null when unrestricted. */
@@ -36,6 +40,7 @@ export function ProjectSection({
 
   const trimmed = value.trim();
   const showWarning = allowedEmailDomain !== null && mismatchedMemberCount > 0;
+  const isUnrestricted = allowedEmailDomain === null;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,66 +49,64 @@ export function ProjectSection({
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      <header>
-        <h2 className="text-lg font-semibold text-slate-900">Project</h2>
-        <p className="text-sm text-slate-500">
-          Restrict who can sign in and be invited to this project.
-        </p>
-      </header>
+    <div className="flex flex-col gap-4">
+      {error && <Alert tone="danger">{error}</Alert>}
 
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
+      {isUnrestricted ? (
+        <Alert tone="info" title="Sign-in is unrestricted">
+          Anyone you invite can join, regardless of their email domain. Set a Google Workspace
+          domain below to limit new sign-ins and invites.
+        </Alert>
+      ) : (
+        <Alert tone="success" title={`Restricted to @${allowedEmailDomain}`}>
+          Only people with this email domain can sign in or be invited.
+        </Alert>
       )}
 
       {showWarning && (
-        <div
-          role="status"
-          className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-        >
+        <Alert tone="warning" live title="Some members are outside this domain">
           {mismatchedMemberCount} existing member{mismatchedMemberCount === 1 ? "" : "s"} have a
-          different email domain. They keep access; only new sign-ins and invites are restricted.
-        </div>
+          different email domain. They keep access — only new sign-ins and invites are restricted.
+          To enforce the domain fully, remove or re-invite those members.
+        </Alert>
       )}
 
-      <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">
-            Restrict sign-in to Google Workspace domain (optional)
-          </span>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="mohara.co"
-            disabled={loading || saving}
-            aria-label="Allowed email domain"
-            className="max-w-sm rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
-          />
-        </label>
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={loading || saving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <button
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <Field
+          label="Restrict sign-in to Google Workspace domain"
+          optional
+          hint="Leave blank to allow any email domain."
+        >
+          {(p) => (
+            <Input
+              {...p}
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="mohara.co"
+              disabled={loading || saving}
+              aria-label="Allowed email domain"
+              className="max-w-sm"
+            />
+          )}
+        </Field>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="submit" loading={saving} disabled={loading}>
+            Save
+          </Button>
+          <Button
             type="button"
-            disabled={loading || saving || (allowedEmailDomain === null && trimmed.length === 0)}
+            variant="outline"
+            disabled={loading || saving || (isUnrestricted && trimmed.length === 0)}
             onClick={() => {
               setValue("");
               onSave(null);
             }}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
           >
             Clear
-          </button>
+          </Button>
         </div>
       </form>
-    </section>
+    </div>
   );
 }

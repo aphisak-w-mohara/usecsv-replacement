@@ -5,6 +5,9 @@ import {
   type ColumnMapping,
   type ImporterColumn,
 } from "../../lib/fuzzy-match";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Select } from "../ui/select";
 
 export type StepMatchColumnsProps = {
   fileHeaders: string[];
@@ -74,50 +77,41 @@ export function StepMatchColumns({
   return (
     <div className="flex flex-col gap-5">
       <header>
-        <h2 className="text-lg font-semibold text-slate-900">Match columns</h2>
-        <p className="text-sm text-slate-600">
+        <h2 className="text-lg font-semibold text-foreground">Match columns</h2>
+        <p className="text-sm text-muted-foreground">
           Confirm or adjust each column mapping. The wizard pre-selected the closest match for each
           file header — required columns must be mapped to continue.
         </p>
       </header>
 
-      <div
-        className={
-          allRequiredMatched
-            ? "rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
-            : "rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        }
+      <Alert
+        tone={allRequiredMatched ? "success" : "danger"}
+        title={`${matchedRequiredCount} of ${requiredColumns.length} required matched`}
       >
-        {allRequiredMatched ? "✓" : "⚠"}{" "}
-        <strong>
-          {matchedRequiredCount} of {requiredColumns.length} required matched
-        </strong>
-        {" · "}
-        {ignoredCount} ignored
-        {!allRequiredMatched && (
-          <>
-            {" · Missing: "}
-            {missingRequired.map((c) => c.display_name).join(", ")}
-          </>
-        )}
-      </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{ignoredCount} ignored</span>
+          {!allRequiredMatched && (
+            <span>· Missing: {missingRequired.map((c) => c.display_name).join(", ")}</span>
+          )}
+        </div>
+      </Alert>
 
-      <div className="overflow-x-auto rounded-md border border-slate-200">
+      <div className="overflow-x-auto rounded-md border border-border">
         <table className="min-w-full text-xs">
-          <thead className="bg-slate-100">
+          <thead className="bg-muted">
             <tr>
               {fileHeaders.map((header) => (
                 <th
                   key={header}
-                  className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-700"
+                  className="border-b border-border px-3 py-2 text-left font-semibold text-foreground"
                 >
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1.5">
                     <span>{header}</span>
-                    <select
+                    <Select
                       aria-label={`Map column ${header}`}
                       value={mapping[header] ?? IGNORE}
                       onChange={(e) => handleChange(header, e.target.value)}
-                      className="rounded border border-slate-300 px-2 py-1 text-xs font-normal"
+                      className="h-8 text-xs font-normal"
                     >
                       <option value={IGNORE}>Ignore this column</option>
                       {importerColumns.map((c) => (
@@ -126,7 +120,7 @@ export function StepMatchColumns({
                           {c.must_be_matched ? " *" : ""}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </th>
               ))}
@@ -134,9 +128,12 @@ export function StepMatchColumns({
           </thead>
           <tbody>
             {previewRows.map((row, idx) => (
-              <tr key={idx} className="even:bg-slate-50">
+              <tr key={idx} className="even:bg-muted/50">
                 {fileHeaders.map((header) => (
-                  <td key={header} className="border-b border-slate-100 px-3 py-1.5 text-slate-700">
+                  <td
+                    key={header}
+                    className="border-b border-border px-3 py-1.5 text-muted-foreground"
+                  >
                     {row[header] ?? ""}
                   </td>
                 ))}
@@ -147,27 +144,18 @@ export function StepMatchColumns({
       </div>
 
       {rows.length > previewRows.length && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground">
           Showing first {previewRows.length} of {rows.length.toLocaleString("en-US")} rows.
         </p>
       )}
 
       <footer className="flex justify-between pt-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm"
-        >
+        <Button variant="outline" onClick={onBack}>
           Back
-        </button>
-        <button
-          type="button"
-          onClick={handleNext}
-          disabled={!allRequiredMatched}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        </Button>
+        <Button onClick={handleNext} disabled={!allRequiredMatched}>
           Next
-        </button>
+        </Button>
       </footer>
     </div>
   );

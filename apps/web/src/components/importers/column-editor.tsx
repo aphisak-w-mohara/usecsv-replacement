@@ -1,4 +1,11 @@
 import { useState } from "react";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
+import { Modal } from "../ui/modal";
+import { Select } from "../ui/select";
+import { Textarea } from "../ui/textarea";
 
 export const VALIDATION_TYPES = [
   "string",
@@ -13,6 +20,8 @@ export const VALIDATION_TYPES = [
 export type ValidationType = (typeof VALIDATION_TYPES)[number];
 
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
+const NAME_ERROR =
+  "Name must match the required format: start with a lowercase letter, then only lowercase letters, numbers, and underscores.";
 
 export type ColumnDraft = {
   name: string;
@@ -73,96 +82,110 @@ export function ColumnEditor({ mode, initial, saving, saveError, onSave, onCance
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="column-editor-title"
-      className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4"
+    <Modal
+      open
+      onClose={onCancel}
+      title={mode === "add" ? "Add column" : "Edit column"}
+      dismissable={!saving}
+      footer={
+        <>
+          <Button variant="outline" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!canSave} loading={saving}>
+            {mode === "add" ? "Add column" : "Save changes"}
+          </Button>
+        </>
+      }
     >
-      <div className="flex max-h-[90vh] w-full max-w-xl flex-col gap-4 overflow-auto rounded-md bg-white p-6 shadow-lg">
-        <h3 id="column-editor-title" className="text-base font-semibold text-slate-900">
-          {mode === "add" ? "Add column" : "Edit column"}
-        </h3>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Machine name *</span>
-            <input
-              type="text"
-              value={draft.name}
-              onChange={(e) => update("name", e.target.value)}
-              disabled={mode === "edit"}
-              placeholder="snake_case"
-              className="rounded-md border border-slate-300 px-3 py-2 disabled:bg-slate-100"
-            />
-            {!nameValid && draft.name.length > 0 && (
-              <span className="text-xs text-red-700">
-                Must match <code>^[a-z][a-z0-9_]*$</code>
-              </span>
-            )}
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Display name *</span>
-            <input
-              type="text"
-              value={draft.display_name}
-              onChange={(e) => update("display_name", e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-        </div>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-700">Description</span>
-          <textarea
-            value={draft.description ?? ""}
-            onChange={(e) => update("description", e.target.value)}
-            rows={2}
-            className="rounded-md border border-slate-300 px-3 py-2"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-700">Example</span>
-          <input
-            type="text"
-            value={draft.example ?? ""}
-            onChange={(e) => update("example", e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2"
-          />
-        </label>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Validation type</span>
-            <select
-              value={draft.validation_type}
-              onChange={(e) => update("validation_type", e.target.value as ValidationType)}
-              className="rounded-md border border-slate-300 px-3 py-2"
-            >
-              {VALIDATION_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          {usesFormat && (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-slate-700">
-                {draft.validation_type === "select" ? "Options (comma-separated)" : "Regex pattern"}
-              </span>
-              <input
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field
+            label="Machine name"
+            required
+            error={!nameValid && draft.name.length > 0 ? NAME_ERROR : undefined}
+          >
+            {(p) => (
+              <Input
+                {...p}
                 type="text"
-                value={draft.validation_format ?? ""}
-                onChange={(e) => update("validation_format", e.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-2"
+                value={draft.name}
+                onChange={(e) => update("name", e.target.value)}
+                disabled={mode === "edit"}
+                placeholder="snake_case"
               />
-            </label>
-          )}
+            )}
+          </Field>
+          <Field label="Display name" required>
+            {(p) => (
+              <Input
+                {...p}
+                type="text"
+                value={draft.display_name}
+                onChange={(e) => update("display_name", e.target.value)}
+              />
+            )}
+          </Field>
         </div>
 
-        <fieldset className="flex flex-col gap-2 text-sm">
+        <Field label="Description" optional>
+          {(p) => (
+            <Textarea
+              {...p}
+              value={draft.description ?? ""}
+              onChange={(e) => update("description", e.target.value)}
+              rows={2}
+            />
+          )}
+        </Field>
+
+        <Field label="Example" optional>
+          {(p) => (
+            <Input
+              {...p}
+              type="text"
+              value={draft.example ?? ""}
+              onChange={(e) => update("example", e.target.value)}
+            />
+          )}
+        </Field>
+
+        <fieldset className="grid grid-cols-1 gap-4 rounded-md border border-border p-4 sm:grid-cols-2">
+          <legend className="px-1 text-sm font-medium text-foreground">Validation</legend>
+          <Field label="Validation type">
+            {(p) => (
+              <Select
+                {...p}
+                value={draft.validation_type}
+                onChange={(e) => update("validation_type", e.target.value as ValidationType)}
+              >
+                {VALIDATION_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          {usesFormat && (
+            <Field
+              label={
+                draft.validation_type === "select" ? "Options (comma-separated)" : "Regex pattern"
+              }
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  type="text"
+                  value={draft.validation_format ?? ""}
+                  onChange={(e) => update("validation_format", e.target.value)}
+                />
+              )}
+            </Field>
+          )}
+        </fieldset>
+
+        <fieldset className="flex flex-col gap-2 text-sm text-foreground">
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -181,40 +204,19 @@ export function ColumnEditor({ mode, initial, saving, saveError, onSave, onCance
           </label>
         </fieldset>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-slate-700">Custom error message</span>
-          <input
-            type="text"
-            value={draft.custom_error_message ?? ""}
-            onChange={(e) => update("custom_error_message", e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2"
-          />
-        </label>
+        <Field label="Custom error message" optional>
+          {(p) => (
+            <Input
+              {...p}
+              type="text"
+              value={draft.custom_error_message ?? ""}
+              onChange={(e) => update("custom_error_message", e.target.value)}
+            />
+          )}
+        </Field>
 
-        {saveError && (
-          <p role="alert" className="text-sm text-red-700">
-            {saveError}
-          </p>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!canSave}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {mode === "add" ? "Add column" : "Save changes"}
-          </button>
-        </div>
+        {saveError && <Alert tone="danger">{saveError}</Alert>}
       </div>
-    </div>
+    </Modal>
   );
 }

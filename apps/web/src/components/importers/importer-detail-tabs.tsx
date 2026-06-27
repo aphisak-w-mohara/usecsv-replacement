@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { cn } from "../../lib/cn";
 
 export type ImporterTabKey = "general" | "columns" | "environments";
 
@@ -21,14 +22,14 @@ export function ImporterDetailTabs({ importerName, initialTab = "general", rende
   const [active, setActive] = useState<ImporterTabKey>(initialTab);
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="border-b border-slate-200 pb-2">
-        <h1 className="text-xl font-semibold text-slate-900">{importerName}</h1>
+    <div className="flex flex-col gap-6">
+      <header className="border-b border-border pb-3">
+        <h1 className="text-xl font-semibold text-foreground">{importerName}</h1>
       </header>
       <nav
         role="tablist"
         aria-label="Importer settings"
-        className="flex gap-1 border-b border-slate-200"
+        className="flex gap-1 border-b border-border"
       >
         {TABS.map((t) => {
           const selected = t.key === active;
@@ -39,11 +40,13 @@ export function ImporterDetailTabs({ importerName, initialTab = "general", rende
               aria-selected={selected}
               type="button"
               onClick={() => setActive(t.key)}
-              className={
+              className={cn(
+                "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                 selected
-                  ? "border-b-2 border-slate-900 px-4 py-2 text-sm font-medium text-slate-900"
-                  : "border-b-2 border-transparent px-4 py-2 text-sm text-slate-500 hover:text-slate-900"
-              }
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-accent-foreground",
+              )}
             >
               {t.label}
             </button>

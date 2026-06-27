@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { cn } from "../../lib/cn";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
+import { EmptyState } from "../ui/empty-state";
+import { ArrowDownIcon, ArrowUpIcon, GripIcon, PlusIcon, TableIcon, TrashIcon } from "../ui/icons";
+import { Spinner } from "../ui/spinner";
 import { ColumnEditor, EMPTY_DRAFT, type ColumnDraft, type ValidationType } from "./column-editor";
 
 type ColumnRow = ColumnDraft & {
@@ -22,6 +28,8 @@ export function ColumnsTab({ importerId }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,118 +189,153 @@ export function ColumnsTab({ importerId }: Props) {
   }
 
   if (loadError) {
-    return <p className="text-sm text-red-700">{loadError}</p>;
+    return <Alert tone="danger">{loadError}</Alert>;
   }
   if (columns === null) {
-    return <p className="text-sm text-slate-500">Loading columns…</p>;
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner />
+        Loading columns…
+      </div>
+    );
   }
+
+  const addColumnButton = (
+    <Button
+      icon={<PlusIcon className="size-4" />}
+      onClick={() => {
+        setSaveError(null);
+        setEditor({ mode: "add" });
+      }}
+    >
+      Add column
+    </Button>
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        role="note"
-        className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
-      >
+      <Alert tone="warning">
         Column changes affect <strong>all environments including production</strong>.
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => {
-            setSaveError(null);
-            setEditor({ mode: "add" });
-          }}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-        >
-          + Add column
-        </button>
-      </div>
+      </Alert>
 
       {columns.length === 0 ? (
-        <p className="text-sm text-slate-500">No columns yet. Click "+ Add column" to start.</p>
+        <EmptyState
+          icon={<TableIcon className="size-6" />}
+          title="No columns yet"
+          description="Add your first column to define the shape of the CSVs this importer accepts."
+          action={addColumnButton}
+        />
       ) : (
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left">
-              <th className="py-2 pr-4 font-medium text-slate-700">Order</th>
-              <th className="py-2 pr-4 font-medium text-slate-700">Name</th>
-              <th className="py-2 pr-4 font-medium text-slate-700">Display</th>
-              <th className="py-2 pr-4 font-medium text-slate-700">Type</th>
-              <th className="py-2 pr-4 font-medium text-slate-700">Required</th>
-              <th className="py-2 pr-4 font-medium text-slate-700" />
-            </tr>
-          </thead>
-          <tbody>
-            {columns.map((col, idx) => (
-              <tr
-                key={col.id}
-                className="border-b border-slate-100"
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("text/plain", col.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const draggedId = e.dataTransfer.getData("text/plain");
-                  if (draggedId) handleDrop(draggedId, col.id);
-                }}
-              >
-                <td className="py-2 pr-4 text-slate-500">
-                  <span className="mr-2 cursor-grab select-none" aria-hidden="true">
-                    ⋮⋮
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Move ${col.name} up`}
-                    disabled={idx === 0 || saving}
-                    onClick={() => moveColumn(col.id, -1)}
-                    className="px-1 disabled:opacity-30"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${col.name} down`}
-                    disabled={idx === columns.length - 1 || saving}
-                    onClick={() => moveColumn(col.id, 1)}
-                    className="px-1 disabled:opacity-30"
-                  >
-                    ▼
-                  </button>
-                </td>
-                <td className="py-2 pr-4 font-mono text-xs text-slate-700">{col.name}</td>
-                <td className="py-2 pr-4 text-slate-900">{col.display_name}</td>
-                <td className="py-2 pr-4 text-slate-700">{col.validation_type}</td>
-                <td className="py-2 pr-4 text-slate-700">{col.must_be_matched ? "Yes" : "No"}</td>
-                <td className="py-2 pr-4 text-right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSaveError(null);
-                      setEditor({ mode: "edit", column: col });
-                    }}
-                    className="mr-2 text-sm text-slate-700 underline"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingDeleteId(col.id)}
-                    className="text-sm text-red-700 underline"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="flex justify-end">{addColumnButton}</div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">Order</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">Name</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">Display</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">Type</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">Required</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground" />
+                </tr>
+              </thead>
+              <tbody>
+                {columns.map((col, idx) => {
+                  const isDragging = draggingId === col.id;
+                  const isDropTarget = dropTargetId === col.id && draggingId !== col.id;
+                  return (
+                    <tr
+                      key={col.id}
+                      className={cn(
+                        "border-b border-border transition-opacity",
+                        isDragging && "opacity-50",
+                        isDropTarget && "ring-2 ring-inset ring-ring",
+                      )}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", col.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDraggingId(col.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setDropTargetId(col.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingId(null);
+                        setDropTargetId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const draggedId = e.dataTransfer.getData("text/plain");
+                        setDraggingId(null);
+                        setDropTargetId(null);
+                        if (draggedId) handleDrop(draggedId, col.id);
+                      }}
+                    >
+                      <td className="py-2 pr-4 text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <GripIcon
+                            className="size-4 cursor-grab text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            aria-label={`Move ${col.name} up`}
+                            disabled={idx === 0 || saving}
+                            onClick={() => moveColumn(col.id, -1)}
+                            icon={<ArrowUpIcon className="size-4" />}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            aria-label={`Move ${col.name} down`}
+                            disabled={idx === columns.length - 1 || saving}
+                            onClick={() => moveColumn(col.id, 1)}
+                            icon={<ArrowDownIcon className="size-4" />}
+                          />
+                        </div>
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs text-foreground">{col.name}</td>
+                      <td className="py-2 pr-4 font-medium text-foreground">{col.display_name}</td>
+                      <td className="py-2 pr-4 text-muted-foreground">{col.validation_type}</td>
+                      <td className="py-2 pr-4 text-muted-foreground">
+                        {col.must_be_matched ? "Yes" : "No"}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSaveError(null);
+                              setEditor({ mode: "edit", column: col });
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-danger hover:text-danger"
+                            aria-label={`Remove ${col.name}`}
+                            onClick={() => setPendingDeleteId(col.id)}
+                            icon={<TrashIcon className="size-4" />}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {editor && (
