@@ -93,9 +93,7 @@ describe("MembersSection", () => {
         onDismissCreated={noop}
       />,
     );
-    expect(
-      screen.getByText("An invite for that email is already pending."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("An invite for that email is already pending.")).toBeInTheDocument();
   });
 
   it("shows the created invite URL with a send-manually note and a copy button", async () => {

@@ -18,11 +18,7 @@ export default defineConfig({
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("/firebase/") || id.includes("/@firebase/")) return "firebase";
           if (id.includes("/@tanstack/")) return "tanstack";
-          if (
-            id.includes("/react/") ||
-            id.includes("/react-dom/") ||
-            id.includes("/scheduler/")
-          ) {
+          if (id.includes("/react/") || id.includes("/react-dom/") || id.includes("/scheduler/")) {
             return "react";
           }
           return undefined;

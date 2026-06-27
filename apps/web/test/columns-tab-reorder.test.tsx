@@ -91,9 +91,7 @@ describe("ColumnsTab — reorder", () => {
 
     await waitFor(() => {
       const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-      const put = calls.find(
-        (c) => (c[1] as RequestInit | undefined)?.method === "PUT",
-      );
+      const put = calls.find((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
       expect(put).toBeDefined();
       const body = JSON.parse((put![1] as RequestInit).body as string) as {
         ordered_ids: string[];

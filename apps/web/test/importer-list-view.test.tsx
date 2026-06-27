@@ -48,9 +48,7 @@ describe("ImporterListView", () => {
     // and the correct year (2024) is shown, locale-independently.
     const updated = screen.getByText(/updated/i);
     expect(updated).toBeInTheDocument();
-    expect(updated.textContent).toContain(
-      new Date(1716000000 * 1000).getFullYear().toString(),
-    );
+    expect(updated.textContent).toContain(new Date(1716000000 * 1000).getFullYear().toString());
   });
 
   it("shows a loading line instead of the empty state while loading", () => {
@@ -65,9 +63,7 @@ describe("ImporterListView", () => {
       />,
     );
     expect(screen.getByText(/loading importers/i)).toBeInTheDocument();
-    expect(
-      screen.queryByText(/create your first importer/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/create your first importer/i)).not.toBeInTheDocument();
   });
 
   it("shows an empty state when there are no importers", () => {
@@ -148,9 +144,7 @@ describe("ImporterListView", () => {
         onCreate={noop}
       />,
     );
-    expect(
-      screen.getByText("An importer with this name already exists"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("An importer with this name already exists")).toBeInTheDocument();
   });
 
   it("retains the typed name when a create fails (error surfaced)", async () => {

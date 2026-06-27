@@ -17,9 +17,7 @@ describe("EnvSwitcher", () => {
   });
 
   it("renders a static label (no select) when only one env is accessible", () => {
-    render(
-      <EnvSwitcher environments={[envs[0]!]} currentId="env_staging" onSwitch={vi.fn()} />,
-    );
+    render(<EnvSwitcher environments={[envs[0]!]} currentId="env_staging" onSwitch={vi.fn()} />);
     expect(screen.getByText("Staging")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).toBeNull();
   });

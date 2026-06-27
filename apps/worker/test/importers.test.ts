@@ -1,4 +1,3 @@
-import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { authedFetch } from "./helpers/auth.js";
 
@@ -25,7 +24,9 @@ describe("GET /api/importers", () => {
        VALUES ('imp_archived', 'proj_evo', 'Old Importer', unixepoch(), unixepoch(), unixepoch())`,
     ).run();
 
-    const without = await (await authedFetch("https://example.com/api/importers")).json<{
+    const without = await (
+      await authedFetch("https://example.com/api/importers")
+    ).json<{
       importers: { id: string }[];
     }>();
     expect(without.importers.map((i) => i.id)).not.toContain("imp_archived");

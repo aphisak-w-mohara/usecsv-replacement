@@ -131,10 +131,7 @@ export const projectsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>(
         .bind(projectId)
         .first<{ allowed_email_domain: string | null }>();
       if (project?.allowed_email_domain && domainOf(email) !== project.allowed_email_domain) {
-        return c.json(
-          { error: "Email domain does not match the project's allowed domain." },
-          400,
-        );
+        return c.json({ error: "Email domain does not match the project's allowed domain." }, 400);
       }
 
       // Already a member? (join memberships → users by email)

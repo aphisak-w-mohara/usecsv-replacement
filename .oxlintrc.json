@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["node_modules", "dist", ".wrangler", ".vite", "**/routeTree.gen.ts"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-non-null-assertion": "off",
+    "typescript/no-explicit-any": "warn",
+    "eslint/no-underscore-dangle": "off",
+    "unicorn/consistent-function-scoping": "off"
+  }
+}

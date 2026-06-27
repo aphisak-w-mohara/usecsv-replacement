@@ -73,8 +73,8 @@ export function ImporterGeneralTab({
       <section className="flex flex-col gap-2 border-t border-slate-200 pt-6">
         <h2 className="text-sm font-medium text-slate-700">Archive</h2>
         <p className="text-xs text-slate-500">
-          Archiving hides this importer from the list and prevents new uploads against it. Historical
-          uploads remain viewable. You can unarchive later from the Show-archived view.
+          Archiving hides this importer from the list and prevents new uploads against it.
+          Historical uploads remain viewable. You can unarchive later from the Show-archived view.
         </p>
         {importer.archived ? (
           <button

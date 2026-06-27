@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import {
-  ColumnEditor,
-  EMPTY_DRAFT,
-  type ColumnDraft,
-  type ValidationType,
-} from "./column-editor";
+import { ColumnEditor, EMPTY_DRAFT, type ColumnDraft, type ValidationType } from "./column-editor";
 
 type ColumnRow = ColumnDraft & {
   id: string;
@@ -20,9 +15,7 @@ export function ColumnsTab({ importerId }: Props) {
   const [columns, setColumns] = useState<ColumnRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editor, setEditor] = useState<
-    | { mode: "add" }
-    | { mode: "edit"; column: ColumnRow }
-    | null
+    { mode: "add" } | { mode: "edit"; column: ColumnRow } | null
   >(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -250,7 +243,9 @@ export function ColumnsTab({ importerId }: Props) {
                 }}
               >
                 <td className="py-2 pr-4 text-slate-500">
-                  <span className="mr-2 cursor-grab select-none" aria-hidden="true">⋮⋮</span>
+                  <span className="mr-2 cursor-grab select-none" aria-hidden="true">
+                    ⋮⋮
+                  </span>
                   <button
                     type="button"
                     aria-label={`Move ${col.name} up`}
@@ -273,9 +268,7 @@ export function ColumnsTab({ importerId }: Props) {
                 <td className="py-2 pr-4 font-mono text-xs text-slate-700">{col.name}</td>
                 <td className="py-2 pr-4 text-slate-900">{col.display_name}</td>
                 <td className="py-2 pr-4 text-slate-700">{col.validation_type}</td>
-                <td className="py-2 pr-4 text-slate-700">
-                  {col.must_be_matched ? "Yes" : "No"}
-                </td>
+                <td className="py-2 pr-4 text-slate-700">{col.must_be_matched ? "Yes" : "No"}</td>
                 <td className="py-2 pr-4 text-right">
                   <button
                     type="button"

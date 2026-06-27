@@ -184,8 +184,8 @@ export function StepProgress({
           <p className="font-medium">🎉 Import complete</p>
           {status.has_row_errors && (
             <p className="mt-1">
-              {status.row_errors.length} row{status.row_errors.length === 1 ? "" : "s"} were rejected
-              by the receiver.
+              {status.row_errors.length} row{status.row_errors.length === 1 ? "" : "s"} were
+              rejected by the receiver.
             </p>
           )}
           <div className="mt-3 flex gap-3">

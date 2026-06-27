@@ -96,7 +96,6 @@ type ImporterListRow = {
   env_count: number;
 };
 
-
 export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
   .get("/", async (c) => {
     const session = c.get("session");
@@ -112,9 +111,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         ${includeArchived ? "" : "AND i.archived_at IS NULL"}
         ORDER BY i.updated_at DESC, i.id ASC`;
 
-      const result = await c.env.DB.prepare(sql)
-        .bind(session.project_id)
-        .all<ImporterListRow>();
+      const result = await c.env.DB.prepare(sql).bind(session.project_id).all<ImporterListRow>();
 
       const importers = result.results.map((row) => ({
         id: row.id,
@@ -225,109 +222,103 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
       return c.json({ error: "Database error fetching importer" }, 500);
     }
   })
-  .patch(
-    "/:importer_id",
-    zValidator("json", importerPatchSchema),
-    async (c) => {
-      const importerId = c.req.param("importer_id");
-      const session = c.get("session");
-      const body = c.req.valid("json");
-      const trimmedName = body.name?.trim();
+  .patch("/:importer_id", zValidator("json", importerPatchSchema), async (c) => {
+    const importerId = c.req.param("importer_id");
+    const session = c.get("session");
+    const body = c.req.valid("json");
+    const trimmedName = body.name?.trim();
 
-      if (body.name !== undefined && (!trimmedName || trimmedName.length === 0)) {
-        return c.json({ error: "Importer name is required" }, 400);
+    if (body.name !== undefined && (!trimmedName || trimmedName.length === 0)) {
+      return c.json({ error: "Importer name is required" }, 400);
+    }
+
+    try {
+      // Project-scoped existence check. Cross-project → 404 (not 403) to match
+      // the IDOR-resistance pattern set in PRD-002.
+      const existing = await c.env.DB.prepare(
+        "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+      )
+        .bind(importerId, session.project_id)
+        .first<{ id: string }>();
+
+      if (!existing) {
+        return c.json({ error: "Importer not found" }, 404);
       }
 
-      try {
-        // Project-scoped existence check. Cross-project → 404 (not 403) to match
-        // the IDOR-resistance pattern set in PRD-002.
-        const existing = await c.env.DB.prepare(
-          "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+      const sets: string[] = [];
+      const binds: (string | number | null)[] = [];
+
+      if (trimmedName !== undefined) {
+        const collision = await c.env.DB.prepare(
+          "SELECT id FROM importers WHERE project_id = ? AND lower(name) = lower(?) AND id != ?",
         )
-          .bind(importerId, session.project_id)
+          .bind(session.project_id, trimmedName, importerId)
           .first<{ id: string }>();
-
-        if (!existing) {
-          return c.json({ error: "Importer not found" }, 404);
+        if (collision) {
+          return c.json({ error: "An importer with this name already exists" }, 409);
         }
+        sets.push("name = ?");
+        binds.push(trimmedName);
+      }
 
-        const sets: string[] = [];
-        const binds: (string | number | null)[] = [];
+      if (body.archived !== undefined) {
+        sets.push("archived_at = ?");
+        binds.push(body.archived ? Math.floor(Date.now() / 1000) : null);
+      }
 
-        if (trimmedName !== undefined) {
-          const collision = await c.env.DB.prepare(
-            "SELECT id FROM importers WHERE project_id = ? AND lower(name) = lower(?) AND id != ?",
-          )
-            .bind(session.project_id, trimmedName, importerId)
-            .first<{ id: string }>();
-          if (collision) {
-            return c.json({ error: "An importer with this name already exists" }, 409);
-          }
-          sets.push("name = ?");
-          binds.push(trimmedName);
-        }
+      if (sets.length > 0) {
+        const now = Math.floor(Date.now() / 1000);
+        sets.push("updated_at = ?");
+        binds.push(now);
 
-        if (body.archived !== undefined) {
-          sets.push("archived_at = ?");
-          binds.push(body.archived ? Math.floor(Date.now() / 1000) : null);
-        }
+        binds.push(importerId);
+        await c.env.DB.prepare(`UPDATE importers SET ${sets.join(", ")} WHERE id = ?`)
+          .bind(...binds)
+          .run();
+      }
 
-        if (sets.length > 0) {
-          const now = Math.floor(Date.now() / 1000);
-          sets.push("updated_at = ?");
-          binds.push(now);
-
-          binds.push(importerId);
-          await c.env.DB.prepare(
-            `UPDATE importers SET ${sets.join(", ")} WHERE id = ?`,
-          )
-            .bind(...binds)
-            .run();
-        }
-
-        // Project-scoped re-fetch (defense-in-depth) — mirrors every other
-        // importer read in this file. If the existence check above passed and
-        // the UPDATE succeeded but this returns null, something has gone wrong
-        // mid-request (concurrent delete) — surface a 500.
-        const row = await c.env.DB.prepare(
-          `SELECT i.id, i.name, i.archived_at, i.updated_at,
+      // Project-scoped re-fetch (defense-in-depth) — mirrors every other
+      // importer read in this file. If the existence check above passed and
+      // the UPDATE succeeded but this returns null, something has gone wrong
+      // mid-request (concurrent delete) — surface a 500.
+      const row = await c.env.DB.prepare(
+        `SELECT i.id, i.name, i.archived_at, i.updated_at,
                   (SELECT COUNT(*) FROM importer_columns ic WHERE ic.importer_id = i.id) AS column_count,
                   (SELECT COUNT(*) FROM importer_environments ie WHERE ie.importer_id = i.id) AS env_count
            FROM importers i WHERE i.id = ? AND i.project_id = ?`,
-        )
-          .bind(importerId, session.project_id)
-          .first<{
-            id: string;
-            name: string;
-            archived_at: number | null;
-            updated_at: number;
-            column_count: number;
-            env_count: number;
-          }>();
+      )
+        .bind(importerId, session.project_id)
+        .first<{
+          id: string;
+          name: string;
+          archived_at: number | null;
+          updated_at: number;
+          column_count: number;
+          env_count: number;
+        }>();
 
-        if (!row) {
-          return c.json({ error: "Importer disappeared during update" }, 500);
-        }
-
-        return c.json({
-          importer: {
-            id: row.id,
-            name: row.name,
-            column_count: row.column_count,
-            env_count: row.env_count,
-            archived: row.archived_at !== null,
-            updated_at: row.updated_at,
-          },
-        });
-      } catch (err) {
-        if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
-          return c.json({ error: "An importer with this name already exists" }, 409);
-        }
-        console.error("DB error in PATCH /api/importers/:id:", err);
-        return c.json({ error: "Database error updating importer" }, 500);
+      if (!row) {
+        return c.json({ error: "Importer disappeared during update" }, 500);
       }
-    },
-  )
+
+      return c.json({
+        importer: {
+          id: row.id,
+          name: row.name,
+          column_count: row.column_count,
+          env_count: row.env_count,
+          archived: row.archived_at !== null,
+          updated_at: row.updated_at,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
+        return c.json({ error: "An importer with this name already exists" }, 409);
+      }
+      console.error("DB error in PATCH /api/importers/:id:", err);
+      return c.json({ error: "Database error updating importer" }, 500);
+    }
+  })
   .get("/:importer_id/columns", async (c) => {
     const importerId = c.req.param("importer_id");
     const session = c.get("session");
@@ -367,200 +358,190 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
       return c.json({ error: "Database error fetching importer columns" }, 500);
     }
   })
-  .post(
-    "/:importer_id/columns",
-    zValidator("json", columnCreateSchema),
-    async (c) => {
-      const importerId = c.req.param("importer_id");
-      const session = c.get("session");
-      const body = c.req.valid("json");
+  .post("/:importer_id/columns", zValidator("json", columnCreateSchema), async (c) => {
+    const importerId = c.req.param("importer_id");
+    const session = c.get("session");
+    const body = c.req.valid("json");
 
-      try {
-        const importer = await c.env.DB.prepare(
-          "SELECT id FROM importers WHERE id = ? AND project_id = ?",
-        )
-          .bind(importerId, session.project_id)
-          .first<{ id: string }>();
-        if (!importer) {
-          return c.json({ error: "Importer not found" }, 404);
-        }
+    try {
+      const importer = await c.env.DB.prepare(
+        "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+      )
+        .bind(importerId, session.project_id)
+        .first<{ id: string }>();
+      if (!importer) {
+        return c.json({ error: "Importer not found" }, 404);
+      }
 
-        const dup = await c.env.DB.prepare(
-          "SELECT id FROM importer_columns WHERE importer_id = ? AND name = ?",
-        )
-          .bind(importerId, body.name)
-          .first<{ id: string }>();
-        if (dup) {
-          return c.json({ error: "A column with this name already exists" }, 409);
-        }
+      const dup = await c.env.DB.prepare(
+        "SELECT id FROM importer_columns WHERE importer_id = ? AND name = ?",
+      )
+        .bind(importerId, body.name)
+        .first<{ id: string }>();
+      if (dup) {
+        return c.json({ error: "A column with this name already exists" }, 409);
+      }
 
-        const maxRow = await c.env.DB.prepare(
-          "SELECT COALESCE(MAX(position), 0) AS max_pos FROM importer_columns WHERE importer_id = ?",
-        )
-          .bind(importerId)
-          .first<{ max_pos: number }>();
-        const position = (maxRow?.max_pos ?? 0) + 1;
-        const id = generateId("col");
+      const maxRow = await c.env.DB.prepare(
+        "SELECT COALESCE(MAX(position), 0) AS max_pos FROM importer_columns WHERE importer_id = ?",
+      )
+        .bind(importerId)
+        .first<{ max_pos: number }>();
+      const position = (maxRow?.max_pos ?? 0) + 1;
+      const id = generateId("col");
 
-        await c.env.DB.prepare(
-          `INSERT INTO importer_columns
+      await c.env.DB.prepare(
+        `INSERT INTO importer_columns
              (id, importer_id, position, name, display_name, description, example,
               must_be_matched, value_cannot_be_blank,
               validation_type, validation_format, custom_error_message)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(
+          id,
+          importerId,
+          position,
+          body.name,
+          body.display_name,
+          body.description ?? null,
+          body.example ?? null,
+          body.must_be_matched === false ? 0 : 1,
+          body.value_cannot_be_blank === false ? 0 : 1,
+          body.validation_type ?? "string",
+          body.validation_format ?? null,
+          body.custom_error_message ?? null,
         )
-          .bind(
-            id,
-            importerId,
-            position,
-            body.name,
-            body.display_name,
-            body.description ?? null,
-            body.example ?? null,
-            body.must_be_matched === false ? 0 : 1,
-            body.value_cannot_be_blank === false ? 0 : 1,
-            body.validation_type ?? "string",
-            body.validation_format ?? null,
-            body.custom_error_message ?? null,
-          )
+        .run();
+
+      const now = Math.floor(Date.now() / 1000);
+      await c.env.DB.prepare("UPDATE importers SET updated_at = ? WHERE id = ?")
+        .bind(now, importerId)
+        .run();
+
+      const row = await c.env.DB.prepare(
+        `SELECT id, position, name, display_name, description, example,
+                  must_be_matched, value_cannot_be_blank,
+                  validation_type, validation_format, custom_error_message
+           FROM importer_columns WHERE id = ?`,
+      )
+        .bind(id)
+        .first<ColumnFullRow>();
+
+      return c.json({ column: shapeColumn(row!) }, 201);
+    } catch (err) {
+      if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
+        return c.json({ error: "A column with this name already exists" }, 409);
+      }
+      console.error("DB error in POST /api/importers/:id/columns:", err);
+      return c.json({ error: "Database error creating column" }, 500);
+    }
+  })
+  .patch("/:importer_id/columns/:column_id", zValidator("json", columnPatchSchema), async (c) => {
+    const importerId = c.req.param("importer_id");
+    const columnId = c.req.param("column_id");
+    const session = c.get("session");
+    const body = c.req.valid("json");
+
+    try {
+      const importer = await c.env.DB.prepare(
+        "SELECT id FROM importers WHERE id = ? AND project_id = ?",
+      )
+        .bind(importerId, session.project_id)
+        .first<{ id: string }>();
+      if (!importer) {
+        return c.json({ error: "Importer not found" }, 404);
+      }
+
+      const existing = await c.env.DB.prepare(
+        "SELECT id FROM importer_columns WHERE id = ? AND importer_id = ?",
+      )
+        .bind(columnId, importerId)
+        .first<{ id: string }>();
+      if (!existing) {
+        return c.json({ error: "Column not found" }, 404);
+      }
+
+      if (body.name !== undefined) {
+        const dup = await c.env.DB.prepare(
+          "SELECT id FROM importer_columns WHERE importer_id = ? AND name = ? AND id != ?",
+        )
+          .bind(importerId, body.name, columnId)
+          .first<{ id: string }>();
+        if (dup) {
+          return c.json({ error: "A column with this name already exists" }, 409);
+        }
+      }
+
+      const sets: string[] = [];
+      const binds: (string | number | null)[] = [];
+
+      if (body.name !== undefined) {
+        sets.push("name = ?");
+        binds.push(body.name);
+      }
+      if (body.display_name !== undefined) {
+        sets.push("display_name = ?");
+        binds.push(body.display_name);
+      }
+      if (body.description !== undefined) {
+        sets.push("description = ?");
+        binds.push(body.description);
+      }
+      if (body.example !== undefined) {
+        sets.push("example = ?");
+        binds.push(body.example);
+      }
+      if (body.must_be_matched !== undefined) {
+        sets.push("must_be_matched = ?");
+        binds.push(body.must_be_matched ? 1 : 0);
+      }
+      if (body.value_cannot_be_blank !== undefined) {
+        sets.push("value_cannot_be_blank = ?");
+        binds.push(body.value_cannot_be_blank ? 1 : 0);
+      }
+      if (body.validation_type !== undefined) {
+        sets.push("validation_type = ?");
+        binds.push(body.validation_type);
+      }
+      if (body.validation_format !== undefined) {
+        sets.push("validation_format = ?");
+        binds.push(body.validation_format);
+      }
+      if (body.custom_error_message !== undefined) {
+        sets.push("custom_error_message = ?");
+        binds.push(body.custom_error_message);
+      }
+
+      if (sets.length > 0) {
+        binds.push(columnId);
+        await c.env.DB.prepare(`UPDATE importer_columns SET ${sets.join(", ")} WHERE id = ?`)
+          .bind(...binds)
           .run();
 
         const now = Math.floor(Date.now() / 1000);
         await c.env.DB.prepare("UPDATE importers SET updated_at = ? WHERE id = ?")
           .bind(now, importerId)
           .run();
+      }
 
-        const row = await c.env.DB.prepare(
-          `SELECT id, position, name, display_name, description, example,
+      const row = await c.env.DB.prepare(
+        `SELECT id, position, name, display_name, description, example,
                   must_be_matched, value_cannot_be_blank,
                   validation_type, validation_format, custom_error_message
            FROM importer_columns WHERE id = ?`,
-        )
-          .bind(id)
-          .first<ColumnFullRow>();
+      )
+        .bind(columnId)
+        .first<ColumnFullRow>();
 
-        return c.json({ column: shapeColumn(row!) }, 201);
-      } catch (err) {
-        if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
-          return c.json({ error: "A column with this name already exists" }, 409);
-        }
-        console.error("DB error in POST /api/importers/:id/columns:", err);
-        return c.json({ error: "Database error creating column" }, 500);
+      return c.json({ column: shapeColumn(row!) });
+    } catch (err) {
+      if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
+        return c.json({ error: "A column with this name already exists" }, 409);
       }
-    },
-  )
-  .patch(
-    "/:importer_id/columns/:column_id",
-    zValidator("json", columnPatchSchema),
-    async (c) => {
-      const importerId = c.req.param("importer_id");
-      const columnId = c.req.param("column_id");
-      const session = c.get("session");
-      const body = c.req.valid("json");
-
-      try {
-        const importer = await c.env.DB.prepare(
-          "SELECT id FROM importers WHERE id = ? AND project_id = ?",
-        )
-          .bind(importerId, session.project_id)
-          .first<{ id: string }>();
-        if (!importer) {
-          return c.json({ error: "Importer not found" }, 404);
-        }
-
-        const existing = await c.env.DB.prepare(
-          "SELECT id FROM importer_columns WHERE id = ? AND importer_id = ?",
-        )
-          .bind(columnId, importerId)
-          .first<{ id: string }>();
-        if (!existing) {
-          return c.json({ error: "Column not found" }, 404);
-        }
-
-        if (body.name !== undefined) {
-          const dup = await c.env.DB.prepare(
-            "SELECT id FROM importer_columns WHERE importer_id = ? AND name = ? AND id != ?",
-          )
-            .bind(importerId, body.name, columnId)
-            .first<{ id: string }>();
-          if (dup) {
-            return c.json({ error: "A column with this name already exists" }, 409);
-          }
-        }
-
-        const sets: string[] = [];
-        const binds: (string | number | null)[] = [];
-
-        if (body.name !== undefined) {
-          sets.push("name = ?");
-          binds.push(body.name);
-        }
-        if (body.display_name !== undefined) {
-          sets.push("display_name = ?");
-          binds.push(body.display_name);
-        }
-        if (body.description !== undefined) {
-          sets.push("description = ?");
-          binds.push(body.description);
-        }
-        if (body.example !== undefined) {
-          sets.push("example = ?");
-          binds.push(body.example);
-        }
-        if (body.must_be_matched !== undefined) {
-          sets.push("must_be_matched = ?");
-          binds.push(body.must_be_matched ? 1 : 0);
-        }
-        if (body.value_cannot_be_blank !== undefined) {
-          sets.push("value_cannot_be_blank = ?");
-          binds.push(body.value_cannot_be_blank ? 1 : 0);
-        }
-        if (body.validation_type !== undefined) {
-          sets.push("validation_type = ?");
-          binds.push(body.validation_type);
-        }
-        if (body.validation_format !== undefined) {
-          sets.push("validation_format = ?");
-          binds.push(body.validation_format);
-        }
-        if (body.custom_error_message !== undefined) {
-          sets.push("custom_error_message = ?");
-          binds.push(body.custom_error_message);
-        }
-
-        if (sets.length > 0) {
-          binds.push(columnId);
-          await c.env.DB.prepare(
-            `UPDATE importer_columns SET ${sets.join(", ")} WHERE id = ?`,
-          )
-            .bind(...binds)
-            .run();
-
-          const now = Math.floor(Date.now() / 1000);
-          await c.env.DB.prepare("UPDATE importers SET updated_at = ? WHERE id = ?")
-            .bind(now, importerId)
-            .run();
-        }
-
-        const row = await c.env.DB.prepare(
-          `SELECT id, position, name, display_name, description, example,
-                  must_be_matched, value_cannot_be_blank,
-                  validation_type, validation_format, custom_error_message
-           FROM importer_columns WHERE id = ?`,
-        )
-          .bind(columnId)
-          .first<ColumnFullRow>();
-
-        return c.json({ column: shapeColumn(row!) });
-      } catch (err) {
-        if (err instanceof Error && /UNIQUE constraint failed/i.test(err.message)) {
-          return c.json({ error: "A column with this name already exists" }, 409);
-        }
-        console.error("DB error in PATCH /api/importers/:id/columns/:column_id:", err);
-        return c.json({ error: "Database error updating column" }, 500);
-      }
-    },
-  )
+      console.error("DB error in PATCH /api/importers/:id/columns/:column_id:", err);
+      return c.json({ error: "Database error updating column" }, 500);
+    }
+  })
   .delete("/:importer_id/columns/:column_id", async (c) => {
     const importerId = c.req.param("importer_id");
     const columnId = c.req.param("column_id");
@@ -585,9 +566,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
         return c.json({ error: "Column not found" }, 404);
       }
 
-      await c.env.DB.prepare("DELETE FROM importer_columns WHERE id = ?")
-        .bind(columnId)
-        .run();
+      await c.env.DB.prepare("DELETE FROM importer_columns WHERE id = ?").bind(columnId).run();
 
       const now = Math.floor(Date.now() / 1000);
       await c.env.DB.prepare("UPDATE importers SET updated_at = ? WHERE id = ?")
@@ -602,10 +581,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
   })
   .put(
     "/:importer_id/columns/order",
-    zValidator(
-      "json",
-      z.object({ ordered_ids: z.array(z.string()).min(1) }),
-    ),
+    zValidator("json", z.object({ ordered_ids: z.array(z.string()).min(1) })),
     async (c) => {
       const importerId = c.req.param("importer_id");
       const session = c.get("session");
@@ -882,12 +858,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
     const envId = c.req.param("env_id");
 
     try {
-      const ie = await resolveImporterEnv(
-        c.env.DB,
-        c.get("session").project_id,
-        importerId,
-        envId,
-      );
+      const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
       if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
       const secret = generateWebhookSecret();
@@ -911,21 +882,14 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
     const envId = c.req.param("env_id");
 
     try {
-      const ie = await resolveImporterEnv(
-        c.env.DB,
-        c.get("session").project_id,
-        importerId,
-        envId,
-      );
+      const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
       if (!ie) return c.json({ error: "Importer environment not found" }, 404);
       if (!ie.webhook_signing_enabled) {
         return c.json({ error: "Enable signing before rotating the secret" }, 409);
       }
 
       const secret = generateWebhookSecret();
-      await c.env.DB.prepare(
-        "UPDATE importer_environments SET webhook_secret = ? WHERE id = ?",
-      )
+      await c.env.DB.prepare("UPDATE importer_environments SET webhook_secret = ? WHERE id = ?")
         .bind(secret, ie.id)
         .run();
 
@@ -941,18 +905,11 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
     const envId = c.req.param("env_id");
 
     try {
-      const ie = await resolveImporterEnv(
-        c.env.DB,
-        c.get("session").project_id,
-        importerId,
-        envId,
-      );
+      const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
       if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
       const newKey = crypto.randomUUID();
-      await c.env.DB.prepare(
-        "UPDATE importer_environments SET key = ? WHERE id = ?",
-      )
+      await c.env.DB.prepare("UPDATE importer_environments SET key = ? WHERE id = ?")
         .bind(newKey, ie.id)
         .run();
 
@@ -971,12 +928,7 @@ export const importersRoutes = new Hono<{ Bindings: Env; Variables: Variables }>
     const envId = c.req.param("env_id");
 
     try {
-      const ie = await resolveImporterEnv(
-        c.env.DB,
-        c.get("session").project_id,
-        importerId,
-        envId,
-      );
+      const ie = await resolveImporterEnv(c.env.DB, c.get("session").project_id, importerId, envId);
       if (!ie) return c.json({ error: "Importer environment not found" }, 404);
 
       await c.env.DB.prepare(

@@ -37,7 +37,12 @@ function makeApi(overrides: {
         status: "completed",
         batch_count: 1,
         batches_delivered: 1,
-        latest_attempt: { batch_index: 1, attempt_number: 1, status_code: 200, response_body: "{}" },
+        latest_attempt: {
+          batch_index: 1,
+          attempt_number: 1,
+          status_code: 200,
+          response_body: "{}",
+        },
         row_errors: [],
         has_row_errors: false,
       } satisfies UploadStatusResponse),
@@ -56,7 +61,9 @@ describe("StepProgress", () => {
     expect(apiClient.sendBatch).toHaveBeenCalledWith(
       "upl_1",
       1,
-      expect.arrayContaining([expect.objectContaining({ row: 1, first_name: "Alice", email: "a@b.com" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ row: 1, first_name: "Alice", email: "a@b.com" }),
+      ]),
     );
 
     await waitFor(() => expect(screen.getByText(/import complete/i)).toBeInTheDocument());
@@ -80,7 +87,12 @@ describe("StepProgress", () => {
         status: "halted",
         batch_count: 1,
         batches_delivered: 0,
-        latest_attempt: { batch_index: 1, attempt_number: 6, status_code: 500, response_body: "upstream boom" },
+        latest_attempt: {
+          batch_index: 1,
+          attempt_number: 6,
+          status_code: 500,
+          response_body: "upstream boom",
+        },
         row_errors: [],
         has_row_errors: false,
       } satisfies UploadStatusResponse),
@@ -100,7 +112,12 @@ describe("StepProgress", () => {
         status: "completed",
         batch_count: 1,
         batches_delivered: 1,
-        latest_attempt: { batch_index: 1, attempt_number: 1, status_code: 200, response_body: "{}" },
+        latest_attempt: {
+          batch_index: 1,
+          attempt_number: 1,
+          status_code: 200,
+          response_body: "{}",
+        },
         row_errors: [{ row: 2, msg: "duplicate email" }],
         has_row_errors: true,
       } satisfies UploadStatusResponse),
@@ -120,12 +137,19 @@ describe("StepProgress", () => {
         status: "halted",
         batch_count: 1,
         batches_delivered: 0,
-        latest_attempt: { batch_index: 1, attempt_number: 6, status_code: 500, response_body: "boom" },
+        latest_attempt: {
+          batch_index: 1,
+          attempt_number: 6,
+          status_code: 500,
+          response_body: "boom",
+        },
         row_errors: [],
         has_row_errors: false,
       } satisfies UploadStatusResponse),
     });
-    render(<StepProgress {...baseProps} apiClient={apiClient} onReset={vi.fn()} onRetry={onRetry} />);
+    render(
+      <StepProgress {...baseProps} apiClient={apiClient} onReset={vi.fn()} onRetry={onRetry} />,
+    );
     await userEvent.click(screen.getByRole("button", { name: /submit/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /retry/i }));

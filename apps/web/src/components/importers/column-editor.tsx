@@ -52,8 +52,7 @@ export function ColumnEditor({ mode, initial, saving, saveError, onSave, onCance
 
   const nameValid = NAME_RE.test(draft.name);
   const displayValid = draft.display_name.trim().length > 0;
-  const usesFormat =
-    draft.validation_type === "select" || draft.validation_type === "regex";
+  const usesFormat = draft.validation_type === "select" || draft.validation_type === "regex";
   const canSave = !saving && nameValid && displayValid;
 
   function update<K extends keyof ColumnDraft>(key: K, value: ColumnDraft[K]) {
@@ -68,9 +67,7 @@ export function ColumnEditor({ mode, initial, saving, saveError, onSave, onCance
       example: draft.example?.trim() ? draft.example : null,
       validation_format:
         usesFormat && draft.validation_format?.trim() ? draft.validation_format : null,
-      custom_error_message: draft.custom_error_message?.trim()
-        ? draft.custom_error_message
-        : null,
+      custom_error_message: draft.custom_error_message?.trim() ? draft.custom_error_message : null,
     };
     onSave(cleaned);
   }
@@ -153,9 +150,7 @@ export function ColumnEditor({ mode, initial, saving, saveError, onSave, onCance
           {usesFormat && (
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-slate-700">
-                {draft.validation_type === "select"
-                  ? "Options (comma-separated)"
-                  : "Regex pattern"}
+                {draft.validation_type === "select" ? "Options (comma-separated)" : "Regex pattern"}
               </span>
               <input
                 type="text"

@@ -70,9 +70,7 @@ export function EnvironmentsTab({ importerId }: Props) {
   }
   if (envs.length === 0) {
     return (
-      <p className="text-sm text-slate-500">
-        No environments configured yet for this project.
-      </p>
+      <p className="text-sm text-slate-500">No environments configured yet for this project.</p>
     );
   }
 
@@ -81,9 +79,7 @@ export function EnvironmentsTab({ importerId }: Props) {
   function onSaved(env_id: string, updated: ImporterEnvironment) {
     setEnvs((prev) =>
       (prev ?? []).map((e) =>
-        e.env_id === env_id
-          ? { ...e, configured: true, importer_environment: updated }
-          : e,
+        e.env_id === env_id ? { ...e, configured: true, importer_environment: updated } : e,
       ),
     );
   }
@@ -104,7 +100,10 @@ export function EnvironmentsTab({ importerId }: Props) {
                   : "border-b-2 border-transparent px-3 py-2 text-sm text-slate-500 hover:text-slate-900"
               }
             >
-              {e.env_name} {e.configured ? null : <span className="text-xs text-slate-400">·  not configured</span>}
+              {e.env_name}{" "}
+              {e.configured ? null : (
+                <span className="text-xs text-slate-400">· not configured</span>
+              )}
             </button>
           );
         })}
@@ -138,9 +137,7 @@ function EnvironmentConfigForm({ importerId, envRow, onSaved }: FormProps) {
   const [webhookUrl, setWebhookUrl] = useState(ie?.webhook_url ?? "");
   const [batchSize, setBatchSize] = useState<number>(ie?.batch_size ?? 1000);
   const [filterInvalid, setFilterInvalid] = useState(ie?.filter_invalid_rows ?? false);
-  const [includeUnmatched, setIncludeUnmatched] = useState(
-    ie?.include_unmatched_columns ?? false,
-  );
+  const [includeUnmatched, setIncludeUnmatched] = useState(ie?.include_unmatched_columns ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -186,16 +183,13 @@ function EnvironmentConfigForm({ importerId, envRow, onSaved }: FormProps) {
     <div className="flex flex-col gap-4">
       {!envRow.configured && (
         <p className="text-sm text-slate-500">
-          This environment isn't configured yet. Fill in the form below and save to enable
-          uploads.
+          This environment isn't configured yet. Fill in the form below and save to enable uploads.
         </p>
       )}
 
       {envRow.importer_environment && (
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-slate-700">
-            Public key (used by clients)
-          </label>
+          <label className="text-sm font-medium text-slate-700">Public key (used by clients)</label>
           <div className="flex gap-2">
             <input
               type="text"

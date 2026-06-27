@@ -94,61 +94,61 @@ export function StepReviewGrid({
   // Story #6 Task 2 will wire EditableCell to call this.
   const commitCellEdit = useCallback(
     (rowIdx: number, columnName: string, newValue: string) => {
-    const column = importerColumns.find((c) => c.name === columnName);
-    if (!column) return;
-    const fileHeader = matched[columnName];
-    if (!fileHeader) return;
+      const column = importerColumns.find((c) => c.name === columnName);
+      if (!column) return;
+      const fileHeader = matched[columnName];
+      if (!fileHeader) return;
 
-    setRows((prev) => {
-      const next = [...prev];
-      next[rowIdx] = { ...next[rowIdx]!, [fileHeader]: newValue };
-      return next;
-    });
+      setRows((prev) => {
+        const next = [...prev];
+        next[rowIdx] = { ...next[rowIdx]!, [fileHeader]: newValue };
+        return next;
+      });
 
-    const newResult = validateCell(newValue, column);
+      const newResult = validateCell(newValue, column);
 
-    setValidation((prev) => {
-      // Read oldResult from the prev state, not the closure — protects against
-      // stale reads if React ever batches multiple commitCellEdit calls in one event.
-      const oldResult = prev.cache.get(rowIdx)?.get(columnName);
+      setValidation((prev) => {
+        // Read oldResult from the prev state, not the closure — protects against
+        // stale reads if React ever batches multiple commitCellEdit calls in one event.
+        const oldResult = prev.cache.get(rowIdx)?.get(columnName);
 
-      const nextCache: ValidationCache = new Map(prev.cache);
-      const nextCellCache = new Map(nextCache.get(rowIdx) ?? new Map());
-      nextCellCache.set(columnName, newResult);
-      nextCache.set(rowIdx, nextCellCache);
+        const nextCache: ValidationCache = new Map(prev.cache);
+        const nextCellCache = new Map(nextCache.get(rowIdx) ?? new Map());
+        nextCellCache.set(columnName, newResult);
+        nextCache.set(rowIdx, nextCellCache);
 
-      // Recompute counts incrementally — fast path, no full grid scan.
-      let nextErrors = prev.errorCount;
-      let nextWarnings = prev.warningCount;
-      const nextErrorRows = new Set(prev.errorRowIndices);
+        // Recompute counts incrementally — fast path, no full grid scan.
+        let nextErrors = prev.errorCount;
+        let nextWarnings = prev.warningCount;
+        const nextErrorRows = new Set(prev.errorRowIndices);
 
-      if (oldResult && !oldResult.ok) {
-        if (oldResult.severity === "error") nextErrors--;
-        else nextWarnings--;
-      }
-      if (!newResult.ok) {
-        if (newResult.severity === "error") nextErrors++;
-        else nextWarnings++;
-      }
-
-      // Recompute whether THIS ROW still has any error.
-      let rowStillHasError = false;
-      for (const r of nextCellCache.values()) {
-        if (!r.ok && r.severity === "error") {
-          rowStillHasError = true;
-          break;
+        if (oldResult && !oldResult.ok) {
+          if (oldResult.severity === "error") nextErrors--;
+          else nextWarnings--;
         }
-      }
-      if (rowStillHasError) nextErrorRows.add(rowIdx);
-      else nextErrorRows.delete(rowIdx);
+        if (!newResult.ok) {
+          if (newResult.severity === "error") nextErrors++;
+          else nextWarnings++;
+        }
 
-      return {
-        cache: nextCache,
-        errorCount: nextErrors,
-        warningCount: nextWarnings,
-        errorRowIndices: nextErrorRows,
-      };
-    });
+        // Recompute whether THIS ROW still has any error.
+        let rowStillHasError = false;
+        for (const r of nextCellCache.values()) {
+          if (!r.ok && r.severity === "error") {
+            rowStillHasError = true;
+            break;
+          }
+        }
+        if (rowStillHasError) nextErrorRows.add(rowIdx);
+        else nextErrorRows.delete(rowIdx);
+
+        return {
+          cache: nextCache,
+          errorCount: nextErrors,
+          warningCount: nextWarnings,
+          errorRowIndices: nextErrorRows,
+        };
+      });
     },
     [importerColumns, matched],
   );
