@@ -30,11 +30,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.11.0
+          node-version: 22.12.0
           cache: pnpm
 
+      # NOT --frozen-lockfile: the lockfile is generated on macOS, and pnpm
+      # ignores package.json `supportedArchitectures` under a frozen install, so
+      # it would skip the Linux rolldown native binary the Vite build needs. A
+      # plain install honours supportedArchitectures and fetches it. The lockfile
+      # is still up to date (resolution is skipped), so this isn't lockfile drift.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       # Worker tests run under @cloudflare/vitest-pool-workers, which reads
       # apps/worker/wrangler.toml's [assets] dir (../web/dist). That directory
